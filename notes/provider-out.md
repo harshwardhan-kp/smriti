@@ -1,3 +1,5 @@
+FILE: tools/prompt_harness.py
+```python
 #!/usr/bin/env python3
 """
 prompt_harness.py – Iterate Smriti prompts against the Gemini API on a laptop.
@@ -396,3 +398,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+```
+

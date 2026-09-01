@@ -63,6 +63,10 @@ fun CaptureScreen(
     LaunchedEffect(stage) {
         val currentStage = stage
         if (currentStage is CaptureStage.Done) {
+            // Consume before navigating: `Done` must not still be sitting in the StateFlow
+            // when the user presses back and this screen recomposes, or we bounce them
+            // straight forward again and the back button appears broken.
+            vm.consumeTerminalStage()
             onRecordSaved(currentStage.recordId)
         }
     }

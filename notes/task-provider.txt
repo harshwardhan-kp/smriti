@@ -1,0 +1,38 @@
+Output ONLY file contents. For each file emit a line `FILE: <relative/path>` (NO backticks around the path) followed immediately by one fenced code block containing the complete file. No prose before, between or after.
+
+You are modifying an existing Python 3 stdlib-only tool, `tools/prompt_harness.py`, which
+evaluates prompt templates for an offline Android app. Today it only talks to the Gemini REST
+API. Gemini's free tier is now rate-limited (21/20 requests used), so it needs a second backend.
+
+Emit the COMPLETE new `tools/prompt_harness.py`. Keep every existing behaviour:
+  --prompt-file (default tools/prompts/v1.txt), --cases (default tools/cases.json),
+  --model, --show N, the per-case table, the summary line, the retry-with-backoff on
+  429/500/502/503/504, and the use of tools/repair.py to parse and score.
+
+ADD a `--provider` flag with two values:
+
+  "gemini" (default, current behaviour)
+      key from env GEMINI_API_KEY then ~/.config/gemini-key
+      default model gemini-3.6-flash
+
+  "muse"
+      Do NOT write a new HTTP client for this. Shell out to the already-installed `muse` CLI:
+          muse exec --api-key-stdin --provider meta --model <model> --reasoning-effort high "<prompt>"
+      feeding the API key on stdin, read from env MUSE_API_KEY then ~/.config/muse-key.
+      default model muse-spark-1.2-contributor
+      Use subprocess.run with capture_output=True, text=True, a 300 second timeout, and
+      cwd set to a temporary directory so the CLI does not pick up project rules.
+      The CLI prints diagnostic lines to stdout beginning with "muse:" - strip every line
+      that starts with "muse:" before returning the response text.
+      Treat a non-zero return code as a failure: print the stderr and exit 2.
+
+Structure this cleanly: one `_call_gemini(prompt, model, key)` and one `_call_muse(prompt,
+model, key)`, both returning a plain string, selected by a small dispatch function
+`_call_model(prompt, args)`. Resolve the default model from the provider when --model is not
+given. Print the provider and model in the summary line.
+
+Also add `--out PATH` which writes a JSON report of the run:
+{"provider":..., "model":..., "prompt_file":..., "passed":N, "total":N, "mean_latency":F,
+ "cases":[{"name":..., "seconds":F, "passed":bool, "detail":..., "raw":...}]}
+
+Python 3.9+, stdlib only. Must run without syntax errors.

@@ -47,6 +47,24 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Clears a terminal stage after the UI has acted on it.
+     *
+     * `stage` is state, but "a record was saved" is an EVENT. Leaving `Done` parked in the
+     * StateFlow meant that every time CaptureScreen recomposed — including when the user
+     * pressed back to return to it — `LaunchedEffect(stage)` saw `Done` again and navigated
+     * straight back to the detail screen. From the outside that looks exactly like a broken
+     * back button: the press registers, and is instantly undone.
+     *
+     * Reported from device testing, 2026-09-01.
+     */
+    fun consumeTerminalStage() {
+        val current = _stage.value
+        if (current is CaptureStage.Done || current is CaptureStage.Failed) {
+            _stage.value = null
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         camera.unbind()
