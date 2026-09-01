@@ -5,10 +5,32 @@ Source of truth. Read this first on resume. Newest entries at the bottom of each
 ## Standing context
 
 - Product: offline camera-and-voice work memory. See `ARCHITECTURE.md`.
-- Supervisor: Claude Opus 5. Workers: `agy --model gemini-3.7-flash-high` (primary),
-  `opencode -m opencode/muse-spark-1.2-contributor-free` (free, ~210 s latency floor, bulk only).
-- `muse` CLI is **unusable**: `API error 402 Billing verification failed` after 10 retries
-  (2026-09-01). Not substituting anything paid in its place.
+- Supervisor: Claude Opus 5.
+
+### Worker fleet (all smoke-tested 2026-09-01)
+
+| Worker | Invocation | Status | Latency |
+|---|---|---|---|
+| agy, account 1 | `agy --model claude-opus-4-6-thinking -p "..."` | works | 13 s |
+| agy, account 2 | `HOME="$HOME/.agy-profiles/account2" agy --model claude-opus-4-6-thinking -p "..."` | works | 75 s |
+| agy, Gemini | `agy --model gemini-3.7-flash-high -p "..."` | works | ~30 s |
+| OpenCode Muse Spark | `opencode run -m opencode/muse-spark-1.2-contributor-free "..."` | works, free | **210 s floor** |
+| `muse` CLI | `muse exec --model muse-spark-1.2-contributor` | **BLOCKED** | 402 billing |
+
+Prefer `claude-opus-4-6-thinking` on agy/agy2 — markedly stronger than Gemini 3.7 Flash at
+Kotlin, and two accounts means two quota pools to alternate between.
+
+**`agy2` is a zsh FUNCTION, not a binary.** `~/.zshrc` defines `agy-profile()` and aliases
+`agy2="agy-profile account2"`. Shell functions do not exist in a non-interactive shell, so a
+script must use the expanded form: `HOME="$HOME/.agy-profiles/account2" agy ...`
+
+Worker prompt discipline that works: "Do NOT use tools and do NOT read files. Output ONLY file
+contents: for each file a line `FILE: <path>` followed by one fenced block." Then extract with
+a regex and BUILD IT YOURSELF before believing any of it. Every single dispatch this session
+contained at least one error that compiled or looked fine.
+
+- `muse` CLI is unusable: `API error 402 Billing verification failed` after 10 retries.
+  Not substituting anything paid in its place.
 - Submission assets live in a separate repo: `~/Claude/iqoo-hackathon`.
 - User decision 2026-09-01: build the full product plus the 3-minute pitch, having been told
   the competition forbids carrying in a completed app. This repo is therefore NOT linked from
