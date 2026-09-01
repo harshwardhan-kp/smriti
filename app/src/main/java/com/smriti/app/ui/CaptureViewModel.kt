@@ -5,10 +5,11 @@ import androidx.camera.view.PreviewView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewModelScope
+import com.smriti.app.capture.AsrFactory
 import com.smriti.app.capture.CameraController
 import com.smriti.app.capture.CapturePipeline
 import com.smriti.app.capture.CaptureStage
-import com.smriti.app.capture.PlatformAsr
+import com.smriti.app.capture.PushToTalk
 import com.smriti.app.data.RecordDao
 import com.smriti.app.data.SmritiDb
 import kotlinx.coroutines.Job
@@ -20,7 +21,7 @@ import kotlinx.coroutines.launch
 class CaptureViewModel(app: Application) : AndroidViewModel(app) {
     private val dao: RecordDao = SmritiDb.get(app).recordDao()
     private val camera: CameraController = CameraController(app)
-    private val asr: PlatformAsr = PlatformAsr(app)
+    private val asr = AsrFactory.create(app)
     private val pipeline: CapturePipeline = CapturePipeline(app, dao, camera, asr)
 
     private val _stage = MutableStateFlow<CaptureStage?>(null)
@@ -45,6 +46,10 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    fun stopVoice() {
+        (asr as? PushToTalk)?.stopListening()
     }
 
     /**

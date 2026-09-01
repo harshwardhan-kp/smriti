@@ -205,6 +205,10 @@ fun CaptureScreen(
                                 try {
                                     tryAwaitRelease()
                                 } finally {
+                                    // Releasing the button must END the recording. Without this
+                                    // the recorder runs to its 15 s timeout and the user waits
+                                    // for nothing after they have stopped speaking.
+                                    if (isLongPressed) vm.stopVoice()
                                     isLongPressed = false
                                 }
                             },

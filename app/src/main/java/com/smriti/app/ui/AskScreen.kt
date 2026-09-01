@@ -60,7 +60,8 @@ import com.smriti.app.ai.BackendFactory
 import com.smriti.app.ai.Embedder
 import com.smriti.app.ai.Recall
 import com.smriti.app.ai.RecallAnswer
-import com.smriti.app.capture.PlatformAsr
+import com.smriti.app.capture.Asr
+import com.smriti.app.capture.AsrFactory
 import com.smriti.app.data.Converters
 import com.smriti.app.data.RecordDao
 import com.smriti.app.data.SmritiDb
@@ -78,7 +79,8 @@ private val ColorCardBg = Color(0xFF181818)
 
 class AskViewModel(app: Application) : AndroidViewModel(app) {
     private val dao: RecordDao = SmritiDb.get(app).recordDao()
-    private val asr: PlatformAsr = PlatformAsr(app)
+    // Flavor-selected: PlatformAsr offline, Groq Whisper in devcloud.
+    private val asr: Asr = AsrFactory.create(app)
     private val converters: Converters = Converters()
 
     private val _answer = MutableStateFlow<RecallAnswer?>(null)

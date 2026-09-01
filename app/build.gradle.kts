@@ -18,6 +18,17 @@ val museKey = run {
     }
 }
 
+val groqKey = run {
+    val props = Properties()
+    val localProps = rootProject.file("local.properties")
+    if (localProps.exists()) {
+        localProps.inputStream().use { props.load(it) }
+        props.getProperty("groqApiKey", "")?.trim() ?: ""
+    } else {
+        ""
+    }
+}
+
 android {
     namespace = "com.smriti.app"
     compileSdk = 36
@@ -45,6 +56,7 @@ android {
             applicationIdSuffix = ".devcloud"
             versionNameSuffix = "-devcloud"
             buildConfigField("String", "MUSE_API_KEY", "\"${museKey}\"")
+            buildConfigField("String", "GROQ_API_KEY", "\"${groqKey}\"")
         }
     }
 

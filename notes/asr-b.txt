@@ -1,0 +1,65 @@
+Output ONLY file contents. For each file emit `FILE: <relative/path>` with NO backticks, then one fenced code block with the COMPLETE file. No prose.
+
+Android, Kotlin 2.0.21, package com.smriti.app. Product flavors `offline` and `devcloud` exist.
+
+Existing contracts, use exactly, do not change:
+```
+package com.smriti.app.capture
+interface Asr { suspend fun transcribe(maxMillis: Long = 15_000): String ; fun cancel() }
+class PlatformAsr(context: android.content.Context) : Asr
+class AsrUnavailableException(message: String) : Exception(message)
+interface PushToTalk { fun stopListening() }
+class AudioRecorder(context: android.content.Context) {
+    fun start()
+    fun stop(): java.io.File?     // finished 16 kHz mono WAV, or null
+    fun cancel()
+    val isRecording: Boolean
+}
+```
+In the devcloud flavor `BuildConfig.GROQ_API_KEY` is available (may be an empty string).
+
+Write exactly THREE files.
+
+1. `app/src/offline/java/com/smriti/app/capture/AsrFactory.kt`
+   `object AsrFactory { fun create(context: Context): Asr = PlatformAsr(context) }`
+   Kdoc: measured on a Moto G05 running stock Android 15 on 2026-09-01, the platform recogniser
+   failed with LANGUAGE_PACK_ERROR (code 13) because no offline speech language pack was
+   installed. The shipping build must eventually bundle whisper.cpp rather than depend on a pack
+   that may be absent; this factory is the seam where that swap happens.
+
+2. `app/src/devcloud/java/com/smriti/app/capture/GroqWhisperAsr.kt`
+   `class GroqWhisperAsr(private val context: Context, private val apiKey: String, private val model: String = "whisper-large-v3-turbo") : Asr, PushToTalk`
+   - Holds an AudioRecorder.
+   - `transcribe(maxMillis)`: on Dispatchers.IO. Start the recorder. Wait for EITHER
+     stopListening() being called OR maxMillis elapsing, using a
+     kotlinx.coroutines.CompletableDeferred<Unit> plus kotlinx.coroutines.withTimeoutOrNull.
+     Then stop the recorder. If the file is null or shorter than 1000 bytes, return "".
+     Otherwise upload it and return the trimmed transcript. Delete the file in a finally.
+   - `stopListening()` completes the deferred.
+   - `cancel()` cancels the recorder and completes the deferred.
+   - Upload, written by hand over java.net.HttpURLConnection:
+       POST https://api.groq.com/openai/v1/audio/transcriptions
+       header Authorization: Bearer <apiKey>
+       Content-Type: multipart/form-data; boundary=<random>
+       parts, in this order:
+         file            filename "voice.wav", Content-Type audio/wav, the raw bytes
+         model           the model name
+         response_format "json"
+       Use doOutput=true, setFixedLengthStreamingMode is NOT required; stream the parts with a
+       BufferedOutputStream and write CRLF line endings exactly ("\r\n").
+     Response body is {"text":"..."} — parse with org.json.JSONObject and return
+     optString("text").trim().
+   - Non-2xx: read the error stream and throw AsrUnavailableException("Groq HTTP <code>: <body>").
+   - Retry up to 2 further attempts with exponential backoff (2s, 4s) on HTTP
+     429/500/502/503/504 and on java.io.IOException. Re-uploading the same bytes is safe.
+   - connectTimeout 15000, readTimeout 60000.
+
+3. `app/src/devcloud/java/com/smriti/app/capture/AsrFactory.kt`
+   `object AsrFactory { fun create(context: Context): Asr }`
+   - Returns GroqWhisperAsr(context, BuildConfig.GROQ_API_KEY) when the key is not blank.
+   - Otherwise returns an anonymous Asr whose transcribe() throws AsrUnavailableException
+     with a message telling the developer to add `groqApiKey=...` to local.properties, and whose
+     cancel() does nothing.
+   - Import com.smriti.app.BuildConfig.
+
+Kotlin 2.0.21, no third-party dependencies, org.json is available. Must compile.

@@ -1,0 +1,92 @@
+Output ONLY file contents. For each file emit `FILE: <relative/path>` with NO backticks, then one fenced code block with the COMPLETE file. No prose.
+
+Android project com.smriti.app, Kotlin 2.0.21, minSdk 26. Two product flavors already exist:
+`offline` (default, no INTERNET) and `devcloud` (has INTERNET, applicationIdSuffix ".devcloud").
+`app/build.gradle.kts` already reads `museApiKey` from local.properties into a devcloud
+BuildConfig field `MUSE_API_KEY`.
+
+Existing ASR contract (do not change it):
+```
+package com.smriti.app.capture
+interface Asr { suspend fun transcribe(maxMillis: Long = 15_000): String ; fun cancel() }
+class PlatformAsr(context: Context) : Asr          // Android SpeechRecognizer, offline
+class AsrUnavailableException(message: String) : Exception(message)
+```
+`CapturePipeline(context, dao, camera, asr)` takes an `Asr`. `CaptureViewModel` constructs
+`PlatformAsr(app)` directly today; `AskScreen`'s AskViewModel also constructs `PlatformAsr`.
+
+PROBLEM MEASURED ON DEVICE (Moto G05, stock Android 15, 2026-09-01): the platform recogniser
+fails with `LANGUAGE_PACK_ERROR` / error code 13 — "Failed to get language pack of required
+locale" — because no offline speech language pack is installed. Voice input is dead in the
+devcloud flavor, which blocks iteration.
+
+FIX: put ASR behind a per-flavor factory, exactly as LlmBackend/BackendFactory already do.
+
+WRITE THESE FILES:
+
+1. `app/src/main/java/com/smriti/app/capture/AudioRecorder.kt`
+   - `class AudioRecorder(private val context: Context)`
+   - Records mono 16 kHz PCM from the microphone using `AudioRecord`
+     (MediaRecorder.AudioSource.MIC, CHANNEL_IN_MONO, ENCODING_PCM_16BIT) into a File.
+   - `fun start(): Unit` starts recording on a background thread into
+     `context.cacheDir/voice/<epoch>.wav`.
+   - `suspend fun stop(): File?` stops and returns the finished file, or null if nothing recorded.
+   - Writes a CORRECT 44-byte RIFF/WAVE header (fill in the two size fields after recording by
+     seeking with RandomAccessFile). Getting this wrong yields a file servers reject, so be careful.
+   - `fun cancel()` stops and deletes.
+   - Guard against start() being called twice; release the AudioRecord in a finally.
+
+2. `app/src/main/java/com/smriti/app/capture/AsrFactory.kt` — NO. Put the factory in the
+   flavor source sets instead, see 3 and 4. Do not create this file.
+
+3. `app/src/offline/java/com/smriti/app/capture/AsrFactory.kt`
+   - `object AsrFactory { fun create(context: Context): Asr = PlatformAsr(context) }`
+   - Kdoc noting the measured LANGUAGE_PACK_ERROR risk and that whisper.cpp is the intended
+     replacement for the shipping build.
+
+4. `app/src/devcloud/java/com/smriti/app/capture/AsrFactory.kt`
+   - `object AsrFactory { fun create(context: Context): Asr = GroqWhisperAsr(context, BuildConfig.GROQ_API_KEY) }`
+   - If the key is blank, return a small `Asr` implementation whose transcribe() throws
+     AsrUnavailableException naming `groqApiKey` in local.properties.
+
+5. `app/src/devcloud/java/com/smriti/app/capture/GroqWhisperAsr.kt`
+   - `class GroqWhisperAsr(private val context: Context, private val apiKey: String, private val model: String = "whisper-large-v3-turbo") : Asr`
+   - `transcribe(maxMillis)`: start an AudioRecorder, wait until either `cancel()` is called or
+     maxMillis elapses, stop it, then upload.
+     Expose `fun stopListening()` so the UI can end recording on button release; transcribe()
+     should return as soon as stopListening() is called. Use a CompletableDeferred internally.
+   - Upload: multipart/form-data POST to
+     `https://api.groq.com/openai/v1/audio/transcriptions`
+     header `Authorization: Bearer <apiKey>`
+     parts: `file` (the wav, filename voice.wav, content type audio/wav),
+            `model` = the model name,
+            `response_format` = "json"
+     Build the multipart body by hand over HttpURLConnection's output stream with a random
+     boundary. Response is `{"text":"..."}` — return the trimmed text.
+   - Non-2xx: throw AsrUnavailableException with the status code and response body.
+   - Retry twice with backoff on 429/500/502/503/504 and IOException.
+   - connectTimeout 15000, readTimeout 60000. All work on Dispatchers.IO.
+   - Delete the temp wav in a finally.
+
+6. `app/build.gradle.kts` — emit the COMPLETE file, identical to the current one except that the
+   devcloud flavor gains a second BuildConfig field:
+       buildConfigField("String", "GROQ_API_KEY", "\"${groqKey}\"")
+   where `groqKey` is read from local.properties key `groqApiKey` the same way `museKey` already
+   is (java.util.Properties, rootProject.file("local.properties"), guarded by exists(),
+   defaulting to ""). Keep `import java.util.Properties` at the top. Keep the existing
+   `assertNoNetworkPermission` task wired only to the offline variants. Keep every existing
+   dependency, flavor, ndk abiFilters arm64-v8a, buildFeatures compose+buildConfig, JVM 21.
+
+7. `app/src/main/java/com/smriti/app/ui/CaptureViewModel.kt` — emit the COMPLETE file, changed
+   only so the Asr comes from `AsrFactory.create(app)` instead of `PlatformAsr(app)`.
+   Preserve everything else exactly: CameraController, CapturePipeline, `stage: StateFlow<CaptureStage?>`,
+   `lastRecordId`, `bindCamera`, `capture(withVoice)`, `consumeTerminalStage()` which clears a
+   terminal Done/Failed stage, and `onCleared()` unbinding the camera.
+   Additionally expose `fun stopVoice()` that, when the Asr instance is a GroqWhisperAsr-like
+   type exposing stopListening, ends recording — implement this WITHOUT referencing the devcloud
+   class by name: declare in main
+       `interface PushToTalk { fun stopListening() }`
+   in the capture package, have GroqWhisperAsr implement it, and have stopVoice() do
+       `(asr as? PushToTalk)?.stopListening()`.
+
+Kotlin 2.0.21, no new third-party dependencies, org.json is available. Everything must compile.

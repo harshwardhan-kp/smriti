@@ -1,0 +1,39 @@
+Output ONLY file contents. For each file emit `FILE: <relative/path>` with NO backticks, then one fenced code block with the COMPLETE file. No prose.
+
+Android, Kotlin 2.0.21, minSdk 26, package com.smriti.app. Write exactly TWO files.
+
+1. `app/src/main/java/com/smriti/app/capture/PushToTalk.kt`
+   package com.smriti.app.capture
+   `interface PushToTalk { fun stopListening() }`
+   Kdoc: implemented by Asr implementations that record while a button is held, so the UI can
+   end recording on release without referencing a flavor-specific class by name.
+
+2. `app/src/main/java/com/smriti/app/capture/AudioRecorder.kt`
+   package com.smriti.app.capture
+   `class AudioRecorder(private val context: android.content.Context)`
+
+   - Records mono 16 kHz PCM 16-bit from MediaRecorder.AudioSource.MIC using android.media.AudioRecord.
+   - `fun start()` — begins recording on a background Thread into
+     `File(context.cacheDir, "voice").also { it.mkdirs() }` named `<System.currentTimeMillis()>.wav`.
+     Ignore a second call while already recording.
+   - `fun stop(): java.io.File?` — stops, joins the thread, patches the WAV header, returns the
+     file, or null if nothing was recorded or the file has no audio frames.
+   - `fun cancel()` — stops and deletes the file.
+   - `val isRecording: Boolean`
+
+   WAV header details, get these exactly right or servers reject the file:
+   - Write a 44-byte placeholder header first, then stream raw PCM after it.
+   - After recording, reopen with java.io.RandomAccessFile and patch:
+       bytes 4..7   = 36 + dataSize   (little-endian int, RIFF chunk size)
+       bytes 40..43 = dataSize        (little-endian int, data chunk size)
+   - Header layout: "RIFF", <size>, "WAVE", "fmt ", 16, audioFormat=1, numChannels=1,
+     sampleRate=16000, byteRate=16000*1*16/8=32000, blockAlign=2, bitsPerSample=16,
+     "data", <dataSize>. All multi-byte integers little-endian.
+   - Use AudioRecord.getMinBufferSize(16000, CHANNEL_IN_MONO, ENCODING_PCM_16BIT), and if it
+     returns ERROR or ERROR_BAD_VALUE fall back to 4096. Use a read buffer of at least that size.
+   - Wrap the record loop in try/finally and always call stop() then release() on the AudioRecord.
+   - Catch SecurityException on construction/start (RECORD_AUDIO not granted) and surface it by
+     leaving isRecording false and having stop() return null.
+   - No third-party dependencies. Use java.io.FileOutputStream / BufferedOutputStream.
+
+Both files must compile against Kotlin 2.0.21.

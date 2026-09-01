@@ -259,3 +259,60 @@ seen before. The lenient parser absorbed it with no retry.
 |---|---|---|---|
 | Redmi Note 10S | Helio G95, Mali-G76 | 5.7 GB | MIUI blocks first adb install and denies INJECT_EVENTS |
 | Moto G05 | Helio G81 (mt6768), Mali-G52 MC2 | 3.8 GB, **1.36 GB available** | near-stock A15: adb install and `pm grant` and `input tap` all work. Too little RAM for Gemma 1B; Qwen 0.5B only. |
+
+### 2026-09-01 20:50 — voice input: root cause found, Groq Whisper wired into devcloud
+
+**The long press was never broken.** Reproduced it over adb on the Moto G05
+(`adb shell input swipe 360 1440 360 1440 2500`) and logcat showed the gesture firing
+correctly:
+
+    RecognitionService#onStartListening
+    SodaSpeechRecognizer: Failed to get language pack of required locale: error 13
+    Speech recognition error type LANGUAGE_PACK_ERROR with error code 13
+
+There is **no offline speech language pack installed** on that phone, so Android's on-device
+recogniser has nothing to run. This is the risk the research flagged for Hindi, except it is
+failing for en-US on stock Android 15.
+
+Consequence for the venue: **whisper.cpp is not a stretch goal for the offline build, it is
+required.** The platform recogniser cannot be depended on. `AsrFactory` in the offline source
+set is the seam where that swap happens.
+
+**Groq Whisper in devcloud**, mirroring the LLM split:
+
+| flavor | ASR |
+|---|---|
+| offline | `PlatformAsr` (Android SpeechRecognizer) — currently broken on both test phones |
+| devcloud | `GroqWhisperAsr` → whisper-large-v3-turbo |
+
+    POST https://api.groq.com/openai/v1/audio/transcriptions
+    Authorization: Bearer <key>
+    multipart: file=<wav>, model=whisper-large-v3-turbo, response_format=json
+    -> {"text":"..."}
+
+`AudioRecorder` records 16 kHz mono PCM and writes a canonical 44-byte RIFF/WAVE header,
+patching bytes 4..7 (36+dataSize) and 40..43 (dataSize) afterwards with RandomAccessFile.
+
+**The WAV writer is verified without a device.** Reconstructed the exact header the Kotlin
+emits, wrapped real PCM in it, applied the same patch arithmetic, and posted it to Groq:
+it transcribed correctly. The only difference from an `afconvert` reference file is that
+afconvert inserts an optional `FLLR` padding chunk before `data`; ours uses the canonical
+minimal layout, which is what decoders expect.
+
+**Push-to-talk gap fixed:** CaptureScreen's `onPress` cleared the UI flag on release but never
+stopped the recorder, so a Groq recording would have run to its 15 s timeout after the user
+stopped speaking. Release now calls `vm.stopVoice()`, which reaches the Asr through a
+`PushToTalk` interface declared in main — so main never references the devcloud class by name.
+
+AskScreen also now takes its Asr from `AsrFactory` rather than constructing `PlatformAsr`.
+
+**Keys** live in `local.properties` (gitignored) and reach devcloud through BuildConfig fields
+`MUSE_API_KEY` and `GROQ_API_KEY`. Audited: no key appears in any tracked file.
+
+**Worker note:** `muse exec` WRITES FILES DIRECTLY — it is an agent, not a text generator. A
+run killed by a timeout can leave a partially-written tree with an empty stdout. Check
+`git status` after any muse dispatch that does not exit cleanly.
+
+**Not yet tested on hardware** (device was disconnected): the recorder against a real
+microphone, and the Groq round trip from the phone. Everything compiles and the WAV format is
+proven; what remains unverified is AudioRecord behaviour on the device itself.
