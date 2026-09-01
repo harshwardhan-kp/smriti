@@ -1,0 +1,74 @@
+Do NOT use tools and do NOT read files. Output ONLY file contents: for each file a line `FILE: <relative/path>` followed immediately by one fenced code block with the complete file. No prose anywhere.
+
+Project: Smriti, an offline Android app. Kotlin, Compose, minSdk 26, package `com.smriti.app`.
+It already has: Room (`com.smriti.app.data` with RecordEntity, TaskEntity, RecordDao, SmritiDb),
+a Compose theme `SmritiTheme`, and a NavHost with routes capture/timeline/detail/ask.
+CAMERA and RECORD_AUDIO permissions are already granted before these classes are used.
+The app has NO INTERNET PERMISSION — never call anything network-bound.
+
+Write the capture layer. Files:
+
+1. `app/src/main/java/com/smriti/app/capture/CameraController.kt`
+   - Class `CameraController(private val context: Context)`.
+   - `fun bind(lifecycleOwner: LifecycleOwner, previewView: PreviewView)` — binds CameraX
+     Preview + ImageCapture to the back camera via `ProcessCameraProvider.getInstance(context)`.
+     Handle the ListenableFuture with `ContextCompat.getMainExecutor(context)`.
+   - `suspend fun capture(): File` — takes a picture to `context.filesDir/photos/<epochMillis>.jpg`,
+     creating the directory if absent. Wrap the `ImageCapture.takePicture` callback in
+     `suspendCancellableCoroutine`. Resume with the File on success, resumeWithException on error.
+   - `fun unbind()`.
+   - Set `ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY` and target rotation from the display.
+
+2. `app/src/main/java/com/smriti/app/capture/Asr.kt`
+   - `interface Asr { suspend fun transcribe(maxMillis: Long = 15_000): String ; fun cancel() }`
+   - Kdoc noting that the production implementation will be whisper.cpp; this interface exists
+     so that swap is a one-line change.
+
+3. `app/src/main/java/com/smriti/app/capture/PlatformAsr.kt`
+   - `class PlatformAsr(private val context: Context) : Asr`, using android.speech.SpeechRecognizer.
+   - Must use ON-DEVICE recognition: on API 33+ call
+     `SpeechRecognizer.createOnDeviceSpeechRecognizer(context)`, else fall back to
+     `SpeechRecognizer.createSpeechRecognizer(context)` with
+     `RecognizerIntent.EXTRA_PREFER_OFFLINE = true`.
+   - Intent extras: ACTION_RECOGNIZE_SPEECH, LANGUAGE_MODEL_FREE_FORM, EXTRA_PARTIAL_RESULTS true,
+     EXTRA_LANGUAGE set to Locale.getDefault().
+   - `transcribe()` wraps the RecognitionListener in `suspendCancellableCoroutine`, returning the
+     best result string, or "" on ERROR_NO_MATCH / ERROR_SPEECH_TIMEOUT.
+   - IMPORTANT: SpeechRecognizer must be created and called on the MAIN thread. Use
+     `withContext(Dispatchers.Main)` internally even though callers invoke from IO.
+   - Any other error resumes with an `AsrUnavailableException(message)` (define it in this file)
+     carrying the numeric error code translated to a readable name, so the UI can say
+     "no offline voice pack installed" rather than failing silently. This specific failure is
+     expected on some OEM builds and MUST be visible, never swallowed.
+   - `invokeOnCancellation` must call `destroy()` on the recognizer.
+
+4. `app/src/main/java/com/smriti/app/ai/Ocr.kt`
+   - `object Ocr` with `suspend fun read(file: File, context: Context): String`.
+   - Build `InputImage.fromFilePath(context, Uri.fromFile(file))`.
+   - Run the Devanagari recognizer
+     (`TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())`) and the
+     default Latin recognizer, and return whichever produced more characters. Rationale in a
+     comment: Indian workplace artefacts are routinely bilingual and the Latin model silently
+     returns near-empty text on Devanagari input.
+   - Await the ML Kit `Task<Text>` via `suspendCancellableCoroutine` with
+     `addOnSuccessListener`/`addOnFailureListener`. Do not use kotlinx-coroutines-play-services.
+   - Close both clients in a `finally`.
+   - Return "" on failure; OCR failing must never abort a capture.
+
+5. `app/src/main/java/com/smriti/app/capture/CapturePipeline.kt`
+   - `class CapturePipeline(context, dao: RecordDao, camera: CameraController, asr: Asr)`.
+   - `sealed interface CaptureStage { object Photo; object Reading; object Listening; object Thinking; data class Done(val recordId: Long); data class Failed(val reason: String) }`
+   - `fun run(withVoice: Boolean): Flow<CaptureStage>` as a `flow { }` on Dispatchers.IO:
+       emit Photo -> camera.capture()
+       then run OCR and ASR CONCURRENTLY with `coroutineScope { async { } }` (skip ASR when
+       withVoice is false), emitting Reading and Listening
+       then emit Thinking, and for now build a RecordEntity with title = first 60 chars of
+       (transcript.ifBlank { ocrText }), summary = "", empty JSON arrays "[]", embedding = null
+       insert it, emit Done(id)
+     Wrap everything so any throwable emits Failed(readable message) rather than crashing.
+   - Leave a clearly marked `// TASK 5: replace the placeholder title/summary with Extractor`
+     comment where the LLM call will slot in.
+
+Use only these imports' libraries: androidx.camera.*, com.google.mlkit.vision.*, android.speech.*,
+kotlinx.coroutines.*, androidx.core.content.ContextCompat, and the project's own data package.
+Every file must compile against Kotlin 2.0.21 with no unresolved references.

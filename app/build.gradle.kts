@@ -81,4 +81,9 @@ dependencies {
     implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
 
     implementation("com.google.code.gson:gson:2.11.0")
+
+    // On-device text embeddings for offline recall (brute-force cosine, no vector DB).
+    implementation("com.google.mediapipe:tasks-text:0.10.35")
+
+    testImplementation("junit:junit:4.13.2")
 }

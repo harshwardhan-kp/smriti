@@ -1,0 +1,87 @@
+Do NOT use tools and do NOT read files. Output ONLY file contents: for each file a line `FILE: <relative/path>` followed immediately by one fenced code block with the complete file. No prose anywhere.
+
+Project: Smriti, offline Android app, Kotlin, package `com.smriti.app`, minSdk 26.
+Existing: Room in `com.smriti.app.data` (RecordEntity, TaskEntity, RecordDao), and
+`com.smriti.app.capture.CapturePipeline`. NO INTERNET PERMISSION — nothing network-bound.
+
+Write the on-device language-model layer using MediaPipe `com.google.mediapipe:tasks-genai:0.10.35`.
+
+THE API IS EXACTLY THIS. It was read out of the shipped AAR with javap. Do not invent methods.
+
+```
+LlmInference.LlmInferenceOptions.builder()
+    .setModelPath(String)
+    .setMaxTokens(int)
+    .setMaxTopK(int)
+    .setPreferredBackend(LlmInference.Backend)   // enum: DEFAULT, CPU, GPU  — there is NO NPU
+    .build()
+LlmInference.createFromOptions(Context, LlmInferenceOptions): LlmInference
+LlmInference.generateResponse(String): String
+LlmInference.generateResponseAsync(String, ProgressListener<String>): ListenableFuture<String>
+LlmInference.sizeInTokens(String): int
+LlmInference.close()
+interface ProgressListener<T> { void run(T partial, boolean done) }
+```
+`LlmInferenceOptions` has NO setResultListener and NO setErrorListener. Streaming is done by
+passing a ProgressListener to generateResponseAsync.
+
+FILES:
+
+1. `app/src/main/java/com/smriti/app/ModelProvisioner.kt`
+   - `object ModelProvisioner`
+   - `const val FILE_NAME = "gemma3-1b-it-int4.task"`
+   - `fun locate(context: Context): File?` — checks, in order:
+       `File(context.filesDir, "models/$FILE_NAME")`,
+       `File("/data/local/tmp/llm/$FILE_NAME")`
+     returns the first that exists and has length > 100 MB, else null.
+   - `fun missingMessage(): String` — a precise multi-line message naming both searched paths
+     and giving the adb push command.
+
+2. `app/src/main/java/com/smriti/app/ai/LlmEngine.kt`
+   - `class LlmEngine private constructor(private val inference: LlmInference, val backend: String)`
+   - Companion `suspend fun create(context: Context): Result<LlmEngine>` on Dispatchers.IO:
+     locate the model, and if null return `Result.failure(ModelMissingException(...))`.
+     Try Backend.GPU first; on ANY Throwable retry with Backend.CPU and record backend name
+     "CPU (GPU unavailable)". Return Result.failure if CPU also fails.
+   - `suspend fun generate(prompt: String, maxTokens: Int = 512): String` — calls
+     `inference.generateResponse(prompt)` on Dispatchers.IO.
+   - `fun stream(prompt: String): Flow<String>` — `callbackFlow` wrapping generateResponseAsync
+     with a ProgressListener, `trySend(partial)`, and `close()` when done is true.
+   - `fun close()`.
+   - CRITICAL: loading the model takes seconds. The engine must be created once and reused for
+     the process lifetime. Provide `object LlmHolder { @Volatile private var engine: LlmEngine?;
+     suspend fun get(context: Context): Result<LlmEngine> }` doing double-checked init with a Mutex.
+
+3. `app/src/main/java/com/smriti/app/ai/StructuredRecord.kt`
+   - `data class StructuredRecord(val title: String, val summary: String, val people: List<String>,
+      val amounts: List<Amount>, val tags: List<String>, val actions: List<Action>)`
+   - `data class Amount(val value: Double, val currency: String, val label: String)`
+   - `data class Action(val text: String, val due: String?)`   // due is "YYYY-MM-DD" or null
+   - `fun StructuredRecord.Companion.fallback(rawText: String): StructuredRecord` giving
+     title = rawText.take(60), everything else empty.
+
+4. `app/src/main/java/com/smriti/app/ai/Extractor.kt`
+   - `class Extractor(private val engine: LlmEngine)`
+   - `suspend fun extract(ocrText: String, transcript: String): StructuredRecord`
+   - Prompt: instruct the model that today's date is passed in, that it must answer with a single
+     JSON object and nothing else, and give the exact schema
+     `{"title":"","summary":"","people":[],"amounts":[{"value":0,"currency":"INR","label":""}],
+       "tags":[],"actions":[{"text":"","due":"YYYY-MM-DD or null"}]}`.
+     Include the OCR text and the transcript in clearly labelled sections, each truncated to
+     1500 characters. Ask for a title of at most 8 words.
+   - ROBUSTNESS, this is the important part. A 1B model will not reliably return clean JSON:
+       a. take the substring from the first '{' to the LAST '}'
+       b. strip markdown fences if present
+       c. remove trailing commas before } or ] with a regex
+       d. parse with Gson into the data classes
+       e. on any exception, retry ONCE with a shortened prompt that omits the OCR text
+       f. on second failure return `StructuredRecord.fallback(transcript.ifBlank { ocrText })`
+     Never throw out of `extract`. Losing the user's capture because the model rambled is the
+     worst possible failure.
+   - `internal fun repairJson(raw: String): String` exposed for unit testing.
+
+5. `app/src/test/java/com/smriti/app/ai/ExtractorJsonTest.kt`
+   - Plain JUnit 4 tests for `repairJson` covering: clean JSON, JSON wrapped in ```json fences,
+     JSON with leading prose, JSON with a trailing comma, and text with no braces at all.
+
+Kotlin 2.0.21. Use Gson (`com.google.code.gson:gson`) for parsing. Everything must compile.

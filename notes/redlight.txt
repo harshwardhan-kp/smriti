@@ -1,0 +1,13 @@
+Answer from knowledge. Output plain markdown only, no preamble.
+
+CONTEXT: a 30-hour Android hackathon where 55% of build time is "Red Light" — the phone is the ONLY device allowed, the laptop is off-limits, bridged by vivo Office Kit. 10% of the score is telemetry-measured Office Kit usage; 15% is telemetry-measured camera/voice/on-device-AI use. Team of students, Android skill intermediate, building a Kotlin/Compose app with an on-device LLM.
+
+Write a practical Red Light playbook covering:
+1. vivo Office Kit: what it actually does (screen mirror, shared clipboard, file transfer, remote control, notes sync), macOS support, and what "phone only, via Office Kit" plausibly means in practice. Flag ambiguity rather than guessing.
+2. Getting real Android work done from the phone alone, ranked by usefulness: Termux (+ termux-api, proot-distro, on-device JDK/Gradle — is an Android Gradle build actually feasible on-device in 2026, and what breaks?); on-device editors (Acode, Squircle CE, AIDE, Spck); GitHub Actions CI builds triggered from the phone with the artifact installed back on it — give a complete minimal workflow YAML for an Android debug APK; Expo/React Native and Flutter hot reload driven from a phone.
+3. Git from the phone: Termux git, SSH keys, gh CLI, GitHub mobile app limits.
+4. Typing throughput: Bluetooth/OTG keyboards, phone keyboard shortcuts, voice dictation for code.
+5. An hour-by-hour template splitting 30 hours so phone-only stretches get work a phone is genuinely good at (UI tweaks, on-device model testing, camera/voice capture testing, demo rehearsal, README and deck) and laptop stretches get what needs a laptop (SDK installs, model conversion, heavy Gradle, NDK).
+6. The five mistakes that cost teams the most hours during phone-only time.
+
+Dense, specific, tables where useful, cite URLs. Mark anything uncertain with `UNVERIFIED:`.
