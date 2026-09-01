@@ -1,9 +1,13 @@
 package com.smriti.app.capture
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -11,6 +15,8 @@ import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+
+private const val TAG = "AudioRecorder"
 
 class AudioRecorder(private val context: Context) {
 
@@ -27,6 +33,18 @@ class AudioRecorder(private val context: Context) {
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
     fun start() {
+        // Check the permission explicitly rather than relying on catching SecurityException.
+        // A denied mic otherwise looks identical to a silent recording: the user holds the
+        // button, speaks, and gets an empty transcript with nothing explaining why.
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            Log.w(TAG, "RECORD_AUDIO not granted; refusing to start")
+            return
+        }
+
         synchronized(this) {
             if (isRecording) return
             isRecording = true

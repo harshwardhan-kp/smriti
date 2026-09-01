@@ -84,6 +84,11 @@ class Extractor(private val backend: LlmBackend? = null) {
     }
 
     /**
+     * Exists solely so the lenient parser can be regression-tested against real model output.
+     */
+    internal fun parseForTest(raw: String): StructuredRecord? = parseJson(raw)
+
+    /**
      * Lenient parse. Strict POJO binding is the wrong tool here.
      *
      * Measured on a Redmi Note 10S, Qwen2.5-0.5B q8, 2026-09-01: asked for a `actions` key, the

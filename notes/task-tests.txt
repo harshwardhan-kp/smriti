@@ -1,0 +1,68 @@
+Output ONLY file contents. For each file emit `FILE: <relative/path>` with NO backticks, then one fenced code block with the COMPLETE file. No prose.
+
+Android project, Kotlin 2.0.21, JUnit 4 available as testImplementation. Package com.smriti.app.
+
+Existing production code, use exactly:
+```
+package com.smriti.app.ai
+class Extractor(private val backend: LlmBackend? = null) {
+    internal fun repairJson(raw: String): String
+    suspend fun extract(ocrText: String, transcript: String): StructuredRecord
+}
+data class StructuredRecord(val title: String, val summary: String, val people: List<String>,
+    val amounts: List<Amount>, val tags: List<String>, val actions: List<Action>)
+data class Amount(val value: Double, val currency: String, val label: String)
+data class Action(val text: String, val due: String?)
+object VectorMath { fun cosine(a: FloatArray, b: FloatArray): Float ; fun topK(...) }
+```
+`Extractor`'s private `parseJson(raw: String): StructuredRecord?` is what actually interprets
+model output. It is private, so test it INDIRECTLY: construct `Extractor(null)` and call
+`repairJson`, then assert on the repaired string; and where the assertion needs the parsed
+structure, add a small `internal fun parseForTest(raw: String): StructuredRecord?` to the
+production class — emit the COMPLETE modified `Extractor.kt` too, changing NOTHING else about it,
+just adding that one internal delegating function with a Kdoc saying it exists solely so the
+lenient parser can be regression-tested against real model output.
+
+WRITE:
+
+1. `app/src/main/java/com/smriti/app/ai/Extractor.kt` — the complete existing file plus the one
+   `internal fun parseForTest(raw: String): StructuredRecord? = parseJson(raw)`.
+   Do not alter any other behaviour.
+
+2. `app/src/test/java/com/smriti/app/ai/RealModelOutputTest.kt`
+   JUnit 4. These are VERBATIM outputs captured from real models on real hardware on
+   2026-09-01. Each is a regression guard; name the model in a comment above each test.
+
+   a. Gemma 3 1B on a Redmi Note 10S — fenced, correct key, actions as plain strings:
+      ```json\n{\n  "actions": [\n    "Ship API",\n    "Request from Sharma Traders: 200 units"\n  ]\n}\n```
+      Assert: parses, exactly 2 actions, first contains "Ship API", every action has a non-blank text.
+
+   b. Qwen2.5 0.5B on a Redmi Note 10S — wrong key, plain strings:
+      {"actionItems": ["ship the API by Friday", "order two hundred more units from Sharma Traders"]}
+      Assert: parses, 2 actions.
+
+   c. Muse Spark 1.2 via api.meta.ai — third alias shape, objects with assignee/task/due:
+      {"action_items": [{"assignee": "Rohit", "task": "Ship the API", "due": "Friday"}, {"assignee": null, "task": "Order two hundred more units from Sharma Traders", "due": null}]}
+      Assert: parses, 2 actions, the first action's text contains "Ship the API".
+
+   d. Well-formed full schema — assert title, summary, one person, one tag, one action with
+      due == "2026-09-04".
+
+   e. Prose before the JSON — "Here is the result:\n{...}" — assert it still parses.
+
+   f. Trailing commas before } and ] — assert it still parses.
+
+   g. Pure prose with no braces — assert parseForTest returns null.
+
+   h. An empty string — assert parseForTest returns null.
+
+3. `app/src/test/java/com/smriti/app/ai/VectorMathEdgeTest.kt`
+   JUnit 4, covering cases NOT already tested elsewhere:
+   - cosine of two vectors with a NaN element does not return NaN (assert result is finite)
+   - cosine with one vector all zeros returns 0f and not NaN
+   - cosine of anti-parallel vectors is close to -1f
+   - topK with k larger than the candidate list returns all candidates
+   - topK with an empty candidate list returns an empty list
+   Use `assertTrue(result.isFinite())` style assertions; import org.junit.Assert.*.
+
+Kotlin 2.0.21. Must compile and pass.

@@ -1,0 +1,73 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.14/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preOfflineDebugBuild UP-TO-DATE
+> Task :app:mergeOfflineDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateOfflineDebugBuildConfig UP-TO-DATE
+> Task :app:checkOfflineDebugAarMetadata UP-TO-DATE
+> Task :app:processOfflineDebugNavigationResources UP-TO-DATE
+> Task :app:compileOfflineDebugNavigationResources UP-TO-DATE
+> Task :app:generateOfflineDebugResValues UP-TO-DATE
+> Task :app:mapOfflineDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateOfflineDebugResources UP-TO-DATE
+> Task :app:mergeOfflineDebugResources UP-TO-DATE
+> Task :app:packageOfflineDebugResources UP-TO-DATE
+> Task :app:parseOfflineDebugLocalResources UP-TO-DATE
+> Task :app:createOfflineDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksOfflineDebug UP-TO-DATE
+> Task :app:processOfflineDebugMainManifest UP-TO-DATE
+> Task :app:processOfflineDebugManifest UP-TO-DATE
+> Task :app:processOfflineDebugManifestForPackage UP-TO-DATE
+> Task :app:processOfflineDebugResources UP-TO-DATE
+> Task :app:javaPreCompileOfflineDebug UP-TO-DATE
+> Task :app:mergeOfflineDebugShaders UP-TO-DATE
+> Task :app:compileOfflineDebugShaders NO-SOURCE
+> Task :app:generateOfflineDebugAssets UP-TO-DATE
+> Task :app:mergeOfflineDebugAssets UP-TO-DATE
+> Task :app:compressOfflineDebugAssets UP-TO-DATE
+> Task :app:checkOfflineDebugDuplicateClasses UP-TO-DATE
+> Task :app:desugarOfflineDebugFileDependencies UP-TO-DATE
+> Task :app:mergeExtDexOfflineDebug UP-TO-DATE
+> Task :app:mergeLibDexOfflineDebug UP-TO-DATE
+> Task :app:mergeOfflineDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeOfflineDebugNativeLibs UP-TO-DATE
+> Task :app:stripOfflineDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningOfflineDebug UP-TO-DATE
+> Task :app:writeOfflineDebugAppMetadata UP-TO-DATE
+> Task :app:writeOfflineDebugSigningConfigVersions UP-TO-DATE
+> Task :app:preOfflineDebugAndroidTestBuild SKIPPED
+> Task :app:generateOfflineDebugAndroidTestResValues UP-TO-DATE
+> Task :app:extractProguardFiles UP-TO-DATE
+> Task :app:preOfflineDebugUnitTestBuild UP-TO-DATE
+> Task :app:kspOfflineDebugKotlin
+> Task :app:compileOfflineDebugKotlin
+> Task :app:compileOfflineDebugJavaWithJavac UP-TO-DATE
+> Task :app:dexBuilderOfflineDebug
+> Task :app:mergeOfflineDebugGlobalSynthetics UP-TO-DATE
+> Task :app:processOfflineDebugJavaRes
+> Task :app:bundleOfflineDebugClassesToCompileJar
+> Task :app:mergeProjectDexOfflineDebug
+> Task :app:generateOfflineDebugLintReportModel
+> Task :app:generateOfflineDebugAndroidTestLintModel
+> Task :app:generateOfflineDebugUnitTestLintModel
+> Task :app:mergeOfflineDebugJavaResource
+> Task :app:packageOfflineDebug
+> Task :app:createOfflineDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleOfflineDebug
+
+> Task :app:assertNoNetworkPermission
+assertNoNetworkPermission: clean - 3 merged manifest(s) carry no network permission.
+
+> Task :app:lintAnalyzeOfflineDebugAndroidTest
+> Task :app:lintAnalyzeOfflineDebugUnitTest
+> Task :app:lintAnalyzeOfflineDebug
+
+> Task :app:lintReportOfflineDebug
+Wrote HTML report to file:///Users/harshwardhan/Claude/smriti/app/build/reports/lint-results-offlineDebug.html
+
+> Task :app:lintOfflineDebug
+
+BUILD SUCCESSFUL in 35s
+52 actionable tasks: 17 executed, 35 up-to-date
