@@ -1,0 +1,68 @@
+Do NOT use tools and do NOT read files. Output ONLY file contents: for each file a line `FILE: <relative/path>` followed immediately by one fenced code block with the complete file. No prose anywhere.
+
+Project: Smriti, offline Android app, Kotlin 2.0.21, package `com.smriti.app`, minSdk 26.
+NO INTERNET PERMISSION — nothing network-bound, ever.
+
+Already exists, use these exactly as given:
+- `com.smriti.app.data.RecordEntity(id, createdAt, photoPath, ocrText, transcript, title,
+  summary, peopleJson, amountsJson, tagsJson, embedding: ByteArray?)`
+- `com.smriti.app.data.RecordDao` with `suspend fun allRecordsWithEmbedding(): List<RecordEntity>`
+  and `suspend fun getRecord(id: Long): RecordEntity?`
+- `com.smriti.app.data.Converters` converting FloatArray? <-> ByteArray? little-endian float32
+- `com.smriti.app.ai.LlmEngine` with `suspend fun generate(prompt: String, maxTokens: Int = 512): String`
+  and `object LlmHolder { suspend fun get(context: Context): Result<LlmEngine> }`
+
+Dependency available: `com.google.mediapipe:tasks-text:0.10.35`, which provides
+`com.google.mediapipe.tasks.text.textembedder.TextEmbedder`,
+`TextEmbedder.TextEmbedderOptions`, `com.google.mediapipe.tasks.core.BaseOptions`,
+and `TextEmbedderResult` whose `.embeddingResult().embeddings()[0].floatEmbedding()` is a FloatArray.
+
+WRITE THESE FILES:
+
+1. `app/src/main/java/com/smriti/app/ai/Embedder.kt`
+   - `class Embedder private constructor(private val embedder: TextEmbedder)`
+   - Companion `fun create(context: Context, modelAssetPath: String = "embedder.tflite"): Result<Embedder>`
+     building `BaseOptions.builder().setModelAssetPath(modelAssetPath)` then
+     `TextEmbedder.createFromOptions(context, options)` with `setL2Normalize(true)` and
+     `setQuantize(false)`. Return Result.failure on any throwable, with a message that names
+     the expected asset path — the model may legitimately be absent during development.
+   - `suspend fun embed(text: String): FloatArray` on Dispatchers.IO, truncating text to 1000 chars.
+   - `fun close()`
+   - Kdoc: the .tflite embedder model ships in app assets and is a few megabytes, unlike the
+     language model which is provisioned separately at ~550 MB.
+
+2. `app/src/main/java/com/smriti/app/ai/VectorMath.kt`
+   - `object VectorMath`
+   - `fun cosine(a: FloatArray, b: FloatArray): Float` — returns 0f if either is empty or the
+     sizes differ, guards against a zero norm, single pass computing dot and both norms.
+   - `fun topK(query: FloatArray, candidates: List<Pair<Long, FloatArray>>, k: Int): List<Pair<Long, Float>>`
+     sorted by score descending.
+   - Kdoc explaining the deliberate choice: brute force over a few hundred records is
+     sub-millisecond, and a vector database here would be a dependency to debug for no
+     user-visible gain. Note the threshold at which to reconsider (~10k records).
+
+3. `app/src/main/java/com/smriti/app/ai/Recall.kt`
+   - `data class RecallAnswer(val answer: String, val evidenceRecordId: Long?, val evidencePhotoPath: String?, val usedRecordIds: List<Long>)`
+   - `class Recall(private val dao: RecordDao, private val engine: LlmEngine, private val embedder: Embedder?, private val converters: Converters)`
+   - `suspend fun ask(question: String): RecallAnswer`:
+       a. load `allRecordsWithEmbedding()`
+       b. if the embedder is null OR fewer than 3 records have a non-null embedding, fall back
+          to case-insensitive keyword scoring: count how many of the question's words (length > 3,
+          minus a small English+Hindi stopword set you define) appear in
+          title + summary + ocrText + transcript. This fallback MUST exist — it is what makes
+          the app usable before the embedder model is present.
+       c. otherwise embed the question and take the top 4 by cosine
+       d. build a prompt containing the selected records as numbered blocks with their date,
+          title, summary and a 300-char excerpt of ocrText+transcript, then the question, and
+          an instruction to answer in at most three sentences using only these records and to
+          say plainly when the records do not contain the answer
+       e. `engine.generate(prompt)` and return RecallAnswer with the highest-scoring record's
+          id and photoPath as evidence
+   - Never throw: on any failure return a RecallAnswer whose answer explains what went wrong.
+
+4. `app/src/test/java/com/smriti/app/ai/VectorMathTest.kt`
+   - JUnit 4. Cover: identical vectors score 1.0 within 1e-5; orthogonal vectors score 0.0;
+     mismatched lengths return 0f; empty arrays return 0f; a zero vector does not produce NaN;
+     topK returns k items in descending score order.
+
+Everything must compile against Kotlin 2.0.21 with no unresolved references.
