@@ -9,6 +9,8 @@ import java.time.LocalDate
  * [backend] is nullable so `repairJson` can be unit-tested without loading a 550 MB model.
  * A null backend always yields the fallback record.
  */
+private const val MIN_MEANINGFUL_CHARS = 12
+
 class Extractor(private val backend: LlmBackend? = null) {
 
     private val gson = Gson()
@@ -18,7 +20,14 @@ class Extractor(private val backend: LlmBackend? = null) {
         // makes it comment on that absence, and the comment then becomes the record's title:
         // three records on the test device were titled "Empty Transcript Provided". Skip the
         // call entirely — it is also several seconds saved on a capture that has no content.
-        if (ocrText.isBlank() && transcript.isBlank()) {
+        // Blank is not the only empty. A silent 4-second hold returned a 1-character
+        // transcript and 3 characters of OCR noise, which is not blank — and the model duly
+        // titled the record "Empty Document No Content". Anything under this threshold carries
+        // no meaning worth extracting, so do not ask.
+        val meaningful = (ocrText.trim() + " " + transcript.trim())
+            .filter { it.isLetterOrDigit() }
+            .length
+        if (meaningful < MIN_MEANINGFUL_CHARS) {
             return StructuredRecord.fallback("")
         }
 
