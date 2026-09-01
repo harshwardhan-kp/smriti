@@ -3,9 +3,12 @@ package com.smriti.app.capture
 import android.content.Context
 import com.google.gson.Gson
 import com.smriti.app.ai.BackendFactory
+import com.smriti.app.ai.Embedder
+import com.smriti.app.ai.EmbedderHolder
 import com.smriti.app.ai.Extractor
 import com.smriti.app.ai.Ocr
 import com.smriti.app.ai.StructuredRecord
+import com.smriti.app.data.Converters
 import com.smriti.app.data.RecordDao
 import com.smriti.app.data.TaskEntity
 import java.time.LocalDate
@@ -76,7 +79,10 @@ class CapturePipeline(
                 peopleJson = gson.toJson(structured.people),
                 amountsJson = gson.toJson(structured.amounts),
                 tagsJson = gson.toJson(structured.tags),
-                embedding = null
+                // Embed at capture time. Doing it lazily later means the first Ask after a
+                // capture silently falls back to keyword scoring, which looks like the feature
+                // simply does not work.
+                embedding = embedFor(structured.title, structured.summary, ocrText, transcript)
             )
 
             val recordId = dao.insertRecord(record)
@@ -97,6 +103,28 @@ class CapturePipeline(
             emit(CaptureStage.Failed(t.message ?: "Capture pipeline failed"))
         }
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * Returns the little-endian float32 blob for this record, or null when the embedder asset
+     * is unavailable. A missing embedding is not an error: [com.smriti.app.ai.Recall] degrades
+     * to keyword scoring, so a capture is still worth keeping.
+     */
+    private suspend fun embedFor(
+        title: String,
+        summary: String,
+        ocrText: String,
+        transcript: String
+    ): ByteArray? = try {
+        val embedder = EmbedderHolder.get(context)
+        val text = listOf(title, summary, transcript, ocrText)
+            .filter { it.isNotBlank() }
+            .joinToString(" \n ")
+            .take(1000)
+        if (embedder == null || text.isBlank()) null
+        else Converters().fromFloatArray(embedder.embed(text))
+    } catch (_: Throwable) {
+        null
+    }
 
     /**
      * Titles reach the timeline verbatim, so they have to survive raw OCR.

@@ -34,4 +34,10 @@ interface RecordDao {
 
     @Query("SELECT COUNT(*) FROM records")
     suspend fun countRecords(): Int
+
+    @Query("SELECT * FROM records WHERE embedding IS NULL ORDER BY createdAt DESC")
+    suspend fun recordsMissingEmbedding(): List<RecordEntity>
+
+    @Query("UPDATE records SET embedding = :embedding WHERE id = :id")
+    suspend fun setEmbedding(id: Long, embedding: ByteArray?)
 }

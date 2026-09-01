@@ -316,3 +316,42 @@ run killed by a timeout can leave a partially-written tree with an empty stdout.
 **Not yet tested on hardware** (device was disconnected): the recorder against a real
 microphone, and the Groq round trip from the phone. Everything compiles and the WAV format is
 proven; what remains unverified is AudioRecord behaviour on the device itself.
+
+### 2026-09-01 21:00 — semantic recall actually works now, and a demo corpus exists
+
+**The embedder was never going to load.** `litert-community/embeddinggemma-300m` is Gemma-gated
+like the language model. But MediaPipe publishes its own text embedders, ungated, from
+`storage.googleapis.com/mediapipe-models`:
+
+| model | size | verdict |
+|---|---|---|
+| universal_sentence_encoder.tflite | **5.8 MB** | chosen — small enough to bundle in the APK |
+| bert_embedder.tflite | 26 MB | better quality, too heavy to bundle for now |
+| mobilebert_embedder.tflite | 404 | not published at that path |
+
+It now ships at `app/src/main/assets/embedder.tflite`.
+
+**A gap that would have made the feature look broken:** `CapturePipeline` was storing
+`embedding = null` on every record, and `Recall` requires at least three embedded records before
+it uses semantic search. So the code was all present and the app would have quietly answered
+every question by keyword matching. Captures now embed at capture time via `EmbedderHolder`
+(one instance per process — the asset costs real time to load and rebuilding it per capture
+would stall the one interaction that must feel instant).
+
+`EmbeddingBackfill` fills in records that lack one — seeded rows, rows captured before the asset
+shipped, or rows from a run where the embedder failed to load. Idempotent; only touches
+`embedding IS NULL`. It runs after seeding.
+
+**Demo corpus:** `DemoSeed` inserts 9 realistic records over six days — sprint sync, delivery
+challan, invoice, compressor nameplate, site note, lab log, hiring whiteboard, a Devanagari site
+note, and a DG-set meter reading — each with plausible OCR text, a spoken transcript, people,
+amounts, tags and tasks, and a generated JPEG so thumbnails and the Evidence panel render.
+
+    adb shell am start -n com.smriti.app/.MainActivity --ez smriti_seed true
+    adb shell am start -n com.smriti.app/.MainActivity --ez smriti_seed_clear true
+
+Every seeded row is tagged `seed`, so it is visibly seeded and `clear()` removes exactly those
+rows: it counts first, deletes tasks before records, and no user input reaches the SQL.
+
+Both flavors build; 74 MB debug APKs (the embedder asset plus material-icons-extended, both of
+which R8 will shrink in release).
