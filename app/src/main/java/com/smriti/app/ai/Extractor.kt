@@ -83,33 +83,107 @@ class Extractor(private val engine: LlmEngine? = null) {
         return jsonSlice
     }
 
+    /**
+     * Lenient parse. Strict POJO binding is the wrong tool here.
+     *
+     * Measured on a Redmi Note 10S, Qwen2.5-0.5B q8, 2026-09-01: asked for a `actions` key, the
+     * model returned `{"actionItems": ["ship the API by Friday", ...]}` — right content, wrong
+     * key, and plain strings instead of objects. Gson bound that to an all-null record, the
+     * parse "failed", and the retry pushed extraction from 5.3 s to 21.9 s.
+     *
+     * A 0.5B model will not be argued into a schema. Meet it where it is: accept the common
+     * key aliases, accept an array of strings where objects were asked for, and only fall back
+     * when there is genuinely nothing usable.
+     */
     private fun parseJson(raw: String): StructuredRecord? {
         val repaired = repairJson(raw)
         if (repaired.isBlank()) return null
 
-        return try {
-            val parsed = gson.fromJson(repaired, StructuredRecord::class.java) ?: return null
-            StructuredRecord(
-                title = parsed.title ?: "",
-                summary = parsed.summary ?: "",
-                people = parsed.people?.filterNotNull() ?: emptyList(),
-                amounts = parsed.amounts?.filterNotNull()?.map {
-                    Amount(
-                        value = it.value,
-                        currency = it.currency ?: "INR",
-                        label = it.label ?: ""
-                    )
-                } ?: emptyList(),
-                tags = parsed.tags?.filterNotNull() ?: emptyList(),
-                actions = parsed.actions?.filterNotNull()?.map {
-                    Action(
-                        text = it.text ?: "",
-                        due = it.due
-                    )
-                } ?: emptyList()
-            )
+        val root = try {
+            com.google.gson.JsonParser.parseString(repaired).asJsonObject
         } catch (e: Exception) {
-            null
+            return null
         }
+
+        fun obj(vararg names: String): com.google.gson.JsonElement? =
+            names.firstNotNullOfOrNull { n ->
+                root.entrySet().firstOrNull { it.key.equals(n, ignoreCase = true) }?.value
+            }
+
+        fun str(vararg names: String): String =
+            obj(*names)?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
+
+        fun strList(vararg names: String): List<String> {
+            val el = obj(*names) ?: return emptyList()
+            if (!el.isJsonArray) return emptyList()
+            return el.asJsonArray.mapNotNull { item ->
+                when {
+                    item.isJsonPrimitive -> item.asString.trim()
+                    item.isJsonObject -> item.asJsonObject.entrySet()
+                        .firstOrNull { it.value.isJsonPrimitive }?.value?.asString?.trim()
+                    else -> null
+                }
+            }.filter { it.isNotBlank() }
+        }
+
+        val actions = run {
+            val el = obj("actions", "actionItems", "action_items", "tasks", "todos", "todo")
+            if (el == null || !el.isJsonArray) emptyList()
+            else el.asJsonArray.mapNotNull { item ->
+                when {
+                    // "ship the API by Friday"
+                    item.isJsonPrimitive -> Action(item.asString.trim(), null)
+                    // {"text": "...", "due": "2026-09-04"}
+                    item.isJsonObject -> {
+                        val o = item.asJsonObject
+                        fun pick(vararg k: String) = k.firstNotNullOfOrNull { n ->
+                            o.entrySet().firstOrNull { it.key.equals(n, ignoreCase = true) }
+                                ?.value?.takeIf { it.isJsonPrimitive }?.asString?.trim()
+                        }
+                        val text = pick("text", "task", "action", "item", "description")
+                        val due = pick("due", "dueDate", "due_date", "date", "deadline")
+                            ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+                        text?.takeIf { it.isNotBlank() }?.let { Action(it, due) }
+                    }
+                    else -> null
+                }
+            }
+        }
+
+        val amounts = run {
+            val el = obj("amounts", "quantities", "figures")
+            if (el == null || !el.isJsonArray) emptyList()
+            else el.asJsonArray.mapNotNull { item ->
+                if (!item.isJsonObject) return@mapNotNull null
+                val o = item.asJsonObject
+                fun p(vararg k: String) = k.firstNotNullOfOrNull { n ->
+                    o.entrySet().firstOrNull { it.key.equals(n, ignoreCase = true) }?.value
+                }
+                val v = p("value", "amount", "quantity")?.takeIf { it.isJsonPrimitive }
+                    ?.let { runCatching { it.asDouble }.getOrNull() } ?: return@mapNotNull null
+                Amount(
+                    value = v,
+                    currency = p("currency", "unit")?.takeIf { it.isJsonPrimitive }?.asString ?: "INR",
+                    label = p("label", "for", "description")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
+                )
+            }
+        }
+
+        val summary = str("summary", "note", "description")
+        val title = str("title", "heading", "name").ifBlank {
+            summary.split(Regex("[.!?]")).firstOrNull()?.trim().orEmpty().take(60)
+        }
+
+        // Nothing usable at all - let the caller retry or fall back.
+        if (title.isBlank() && summary.isBlank() && actions.isEmpty()) return null
+
+        return StructuredRecord(
+            title = title,
+            summary = summary,
+            people = strList("people", "persons", "names", "assignees"),
+            amounts = amounts,
+            tags = strList("tags", "labels", "topics"),
+            actions = actions
+        )
     }
 }

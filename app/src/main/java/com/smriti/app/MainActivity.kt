@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Debug affordance. MIUI denies INJECT_EVENTS to the shell user, so the capture button
+        // cannot be tapped over adb; this is how the model gets exercised headlessly.
+        if (intent?.getBooleanExtra(SelfTest.EXTRA, false) == true) {
+            SelfTest.run(
+                context = this,
+                scope = lifecycleScope,
+                backend = intent.getStringExtra("backend"),
+                resetPolicy = intent.getBooleanExtra("reset_backend", false)
+            )
+        }
         setContent {
             SmritiTheme {
                 SmritiApp()

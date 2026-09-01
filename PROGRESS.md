@@ -56,13 +56,27 @@ a wrapper, run `gradle wrapper` in a throwaway empty directory and copy `gradlew
 - [x] Architecture spec for the full product
 
 ### Blocked
-- [ ] Gemma `.task` model — needs the user to accept the licence on HuggingFace (`gated: auto`)
-- [ ] On-device inference numbers — needs the borrowed phone plugged back in
+- [ ] Gemma `.task` model — licence still not accepted on HF account `harshw25`.
+      Diagnosed precisely: the token is fine, an ungated file fetches with it (307). The 403
+      body reads "Access to model litert-community/Gemma3-1B-IT is restricted and you are not
+      in the authorized list." Purely a browser click at
+      https://huggingface.co/litert-community/Gemma3-1B-IT
+      NOTE: the fine-grained token is scoped to entity `harshw25` only. After accepting the
+      licence it may ALSO need the global "Read access to contents of all public gated repos".
+- [ ] Extraction latency after the lenient-parser fix — built and installed, NOT yet measured.
+
+### Unblocked by substitution
+- [x] An on-device LLM is running. `litert-community/Qwen2.5-0.5B-Instruct` is genuinely
+      ungated (Apache-2.0) and ships MediaPipe `.task` files. 1.5B q8 (1.6 GB) also downloaded.
 
 ### Next
-- [ ] Task 8: seed data for demo rehearsal + an on-device smoke run
+- [ ] Measure extraction latency with the lenient parser (was 21.9 s with the strict one)
+- [ ] Try Qwen2.5-1.5B q8 — better schema adherence, ~3x slower per token
+- [ ] Task 8: seed data for demo rehearsal
 - [ ] Swap PlatformAsr for whisper.cpp if offline Hindi proves unreliable on the loaner
-- [ ] Bundle an embedder .tflite into assets (Recall currently falls back to keyword scoring)
+- [ ] Embedder model is Gemma-gated too (`embeddinggemma-300m`). Recall stays on keyword
+      scoring until that licence is accepted, or find an ungated embedder.
+- [ ] Re-measure everything on the iQOO 15 at the venue. The Helio G95 numbers are a floor.
 
 ## Log
 
@@ -95,3 +109,68 @@ Start destination changed from "timeline" to "capture" — capture is the app.
 
 `PITCH.md` written: 3-minute script, stage directions, contingency table, and the exact
 answer to give if a judge asks about the NPU.
+
+### 2026-09-01 15:10 — ON-DEVICE: the model runs, and three real defects surfaced
+
+Test device: Redmi Note 10S (M2101K7BI), Helio G95, Mali-G76, 5.7 GB RAM, Android 13 / SDK 33.
+
+**1. ML Kit smuggles in a network permission.** The installed package requested
+`android.permission.INTERNET` while our manifest declared none. Traced with the manifest-merger
+report to `com.google.android.datatransport:transport-backend-cct`, a Google telemetry uploader
+pulled in transitively by ML Kit. The product's entire claim is that it cannot reach the
+network, so this was the most important defect in the build.
+Fixed with `tools:node="remove"`; guarded by `:app:assertNoNetworkPermission`, which reads the
+MERGED manifest and fails the build. Negative-tested — removing the strip fails the build and
+names all six offending entries. Confirmed against the compiled APK with
+`aapt2 dump permissions`: only CAMERA, RECORD_AUDIO and one Compose signature permission.
+
+**2. The GPU backend segfaults on Mali.** MediaPipe's GPU path initialises fine (model loaded in
+12.8 s) and then dies mid-generation:
+
+    Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+    in libllm_inference_engine_jni.so, tid DefaultDispatch
+
+A native segfault takes the process with it — no Kotlin catch runs, so "try GPU, catch, fall
+back to CPU" cannot work. Added `BackendPolicy`: a SharedPreferences sentinel written with
+`commit()` before a GPU attempt and cleared only after a generation completes. If it is still
+set at next launch, the previous run died mid-attempt and the GPU is quarantined permanently
+on that device. Deliberately pessimistic — one unexplained death is enough.
+CPU backend runs fine and the process survives.
+
+**3. The 0.5B model will not follow a JSON schema.** Asked for `actions`, it returned
+`{"actionItems": [...]}` with plain strings. Strict Gson binding produced an all-null record,
+the parse "failed", and the retry pushed extraction from 5.3 s to 21.9 s.
+Rewrote `parseJson` to be lenient: key aliases (actionItems / action_items / tasks / todos),
+arrays of strings where objects were asked for, alias keys inside action objects, and a title
+derived from the summary's first sentence when absent.
+STATUS: built, installed, latency effect NOT yet measured.
+
+**Measured on the Redmi, CPU backend, Qwen2.5-0.5B q8:**
+
+| metric | value |
+|---|---|
+| first model load (cold) | 12 756 ms |
+| subsequent load (warm page cache) | 1 630 – 1 892 ms |
+| generate, 18 tokens | 5 329 ms |
+| tokens/sec | 2.44 – 3.38 |
+| extract, strict parser (two passes) | 21 858 ms |
+
+These are a floor, not a forecast: Helio G95 is a 2021 mid-range part. The venue device is an
+SM8850. Do NOT quote these numbers as the product's performance.
+
+Extraction output was correct despite the weak model:
+    actions: 2
+      - Rohit ships the API by Friday (due=2026-09-05)
+      - We need two hundred more units from Sharma Traders
+
+**Deck fix:** slide 5 said "Fri 5 Sep". 5 Sep 2026 is a Saturday. Corrected to "Fri 4 Sep"
+and re-rendered.
+
+**Tooling notes for the venue:**
+- MIUI blocks the FIRST `adb install` (`INSTALL_FAILED_USER_RESTRICTED`), including via
+  `pm install` as the shell user. Push to /sdcard/Download and tap it once. UPDATES over
+  `adb install -r` then work fine.
+- MIUI denies `adb shell input tap` (INJECT_EVENTS). The UI cannot be driven over adb; hence
+  `SelfTest`, triggered by
+  `adb shell am start -n com.smriti.app/.MainActivity --ez smriti_selftest true --es backend cpu`
+- `/data/local/tmp` is `drwxrwx--x`, so an app uid CAN traverse it and read a 0666 model there.
