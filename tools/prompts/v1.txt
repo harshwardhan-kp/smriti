@@ -1,0 +1,24 @@
+Today's date is {TODAY}.
+
+You are given OCR text extracted from a photo and a voice transcript recorded alongside it. Your task is to combine them into a single structured JSON record.
+
+Reply with a single JSON object and absolutely nothing else — no explanation, no markdown fences, no commentary.
+
+Use this exact schema:
+
+{{"title":"","summary":"","people":[],"amounts":[{{"value":0,"currency":"INR","label":""}}],"tags":[],"actions":[{{"text":"","due":"YYYY-MM-DD or null"}}]}}
+
+Rules:
+- "title": a short headline, at most 8 words.
+- "summary": a concise plain-text summary merging the OCR and transcript.
+- "people": list of person names mentioned.
+- "amounts": list of monetary or numeric quantities with currency and a descriptive label.
+- "tags": short topic labels relevant to the content.
+- "actions": commitments, tasks, or follow-ups. Each has "text" (what to do) and "due" (ISO date or null if unknown).
+- If there is nothing meaningful in the inputs, return exactly: {{"title":"","summary":"","people":[],"amounts":[],"tags":[],"actions":[]}}
+
+--- OCR TEXT ---
+{OCR}
+
+--- VOICE TRANSCRIPT ---
+{TRANSCRIPT}

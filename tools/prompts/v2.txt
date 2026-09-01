@@ -1,0 +1,20 @@
+Date: {TODAY}. Output ONE JSON object. No other text.
+
+Schema:
+{{"title":"","summary":"","people":[],"amounts":[{{"value":0,"currency":"INR","label":""}}],"tags":[],"actions":[{{"text":"","due":"YYYY-MM-DD or null"}}]}}
+
+Title: max 8 words. Actions: things to do. Amounts: money or quantities. If inputs are empty or meaningless return all fields empty/[].
+
+Example:
+INPUT OCR: "Raj Suppliers\nInv #412\nCement 50 bags\nTotal Rs 18,500"
+INPUT VOICE: "This is the invoice from Raj for the cement we ordered. Need to pay by fifteenth September."
+OUTPUT:
+{{"title":"Cement invoice from Raj Suppliers","summary":"Invoice #412 from Raj Suppliers for 50 bags of cement totalling Rs 18,500.","people":["Raj Suppliers"],"amounts":[{{"value":18500,"currency":"INR","label":"cement 50 bags"}}],"tags":["invoice","cement","construction"],"actions":[{{"text":"Pay Raj Suppliers Rs 18,500","due":"2026-09-15"}}]}}
+
+Now process:
+
+OCR:
+{OCR}
+
+VOICE:
+{TRANSCRIPT}

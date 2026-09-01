@@ -1,0 +1,75 @@
+Do NOT read project files. Output ONLY file contents: for each file a line `FILE: <relative/path>` followed immediately by one fenced code block with the complete file. No prose.
+
+Build a PROMPT ITERATION HARNESS that runs on macOS, in Python 3 (stdlib only, no pip installs).
+
+CONTEXT. An offline Android app called Smriti runs a small local LLM (Gemma 3 1B q4, or Qwen2.5
+0.5B q8) through MediaPipe to turn a photo's OCR text plus a voice transcript into a structured
+JSON record. On the test handset a single generation takes 12-60 seconds, so iterating on the
+prompt against the device is unworkable. This harness iterates the prompt against the Gemini API
+on the laptop instead, in seconds. The winning prompt is then pasted into the Android app and
+confirmed once on device.
+
+The harness NEVER becomes part of the Android app. The app has no network permission and must
+keep it that way.
+
+FILES:
+
+1. `tools/prompt_harness.py`
+   - Reads the API key from, in order: env `GEMINI_API_KEY`, then `~/.config/gemini-key`.
+     Exit with a clear message naming both if neither is present. Never print the key.
+   - Calls the Gemini REST API with urllib.request:
+     POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+     header `x-goog-api-key: <key>`, body {"contents":[{"parts":[{"text": prompt}]}]}
+     Default model `gemini-2.5-flash`, overridable with --model.
+     Handle non-200 by printing status and the response body, then exiting non-zero.
+   - `--prompt-file` selects a prompt template file (default `tools/prompts/v1.txt`).
+     The template uses `{TODAY}`, `{OCR}` and `{TRANSCRIPT}` placeholders.
+   - `--cases` selects a JSON file of test cases (default `tools/cases.json`).
+   - For each case: render the template, call the API, then run the SAME repair-and-parse logic
+     the Android app uses (see file 2), and score the result.
+   - Print a per-case table and a summary line: cases passed / total, mean latency.
+   - `--show N` prints the raw model output for case N, for debugging.
+
+2. `tools/repair.py`
+   - A faithful Python port of the Kotlin `Extractor.repairJson` + lenient `parseJson`:
+       * slice from the first '{' to the last '}'
+       * strip ```json / ``` fences
+       * remove trailing commas before } or ]
+       * parse with json.loads
+       * accept key aliases: actions | actionItems | action_items | tasks | todos
+       * accept an array of plain strings where objects were expected
+       * inside action objects accept text|task|action|item|description and
+         due|dueDate|due_date|date|deadline
+       * accept title|heading|name, summary|note|description, people|persons|names|assignees,
+         tags|labels|topics, amounts|quantities|figures
+       * derive title from the summary's first sentence when title is absent
+       * return None when there is no title, no summary and no actions
+   - Expose `repair_json(raw: str) -> str` and `parse_record(raw: str) -> dict | None`.
+   - This file is the reference the Kotlin must match. Add a module docstring saying so.
+
+3. `tools/prompts/v1.txt`
+   - The current production prompt: today's date is {TODAY}; reply with a single JSON object and
+     nothing else; the exact schema
+     {"title":"","summary":"","people":[],"amounts":[{"value":0,"currency":"INR","label":""}],
+      "tags":[],"actions":[{"text":"","due":"YYYY-MM-DD or null"}]}
+     ; title at most 8 words; then labelled OCR TEXT and VOICE TRANSCRIPT sections.
+
+4. `tools/prompts/v2.txt`
+   - A variant designed for a 1B model: much shorter, imperative, with ONE worked example
+     (few-shot) showing input and the exact JSON output expected. Keep the same schema.
+
+5. `tools/cases.json`
+   - Eight realistic test cases as a JSON array of
+     {"name":"", "ocr":"", "transcript":"", "expect":{"min_actions":N, "must_contain":["..."]}}
+     covering: a whiteboard with two commitments; a delivery challan with a quantity and a
+     vendor; a printed invoice with a rupee amount; a machine nameplate with a serial number;
+     an empty OCR with only a voice note; a voice note with no date; a bilingual
+     Hindi-and-English site note; and a photo with OCR noise and no real content (the harness
+     must handle this yielding nothing gracefully).
+
+6. `tools/README.md`
+   - What this is, why it exists (device iteration is 12-60 s per generation), how to run it,
+     and an explicit warning that this is a laptop-side development tool and must never be
+     imported by the Android app, which has no network permission by design.
+
+Python 3.9+ compatible. No third-party imports. Every file complete and runnable.

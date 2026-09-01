@@ -1,0 +1,74 @@
+[
+  {
+    "name": "whiteboard_two_commitments",
+    "ocr": "Sprint Review\n- Launch date Sept 10\n- Rahul: API integration done by Wed\n- Priya: design mockups by Friday\nParking lot: migration script",
+    "transcript": "Okay so from the whiteboard, Rahul will finish the API integration by Wednesday and Priya has to send the design mockups by Friday. Launch is September tenth.",
+    "expect": {
+      "min_actions": 2,
+      "must_contain": ["Rahul", "Priya"]
+    }
+  },
+  {
+    "name": "delivery_challan_vendor",
+    "ocr": "DELIVERY CHALLAN\nM/s Gupta Steel Traders\nChallan No: DC-2289\nTMT Bars 12mm - 200 pcs\nWeight: 4.2 MT\nDate: 01-Sep-2026",
+    "transcript": "This is the delivery challan from Gupta Steel. Two hundred pieces of twelve mm TMT bars received at site today. Need to update the stock register.",
+    "expect": {
+      "min_actions": 1,
+      "must_contain": ["Gupta"]
+    }
+  },
+  {
+    "name": "printed_invoice_rupee",
+    "ocr": "TAX INVOICE\nAshok Electricals Pvt Ltd\nGSTIN: 27AABCA1234F1Z5\nMCB Panel Board 4-way  Qty 10  Rs 850 each\nTotal: Rs 8,500\nCGST 9%: Rs 765\nSGST 9%: Rs 765\nGrand Total: Rs 10,030",
+    "transcript": "Invoice from Ashok Electricals for the MCB panels. Grand total ten thousand and thirty rupees. File it under electrical expenses.",
+    "expect": {
+      "min_actions": 0,
+      "must_contain": ["10030", "10,030", "Ashok"]
+    }
+  },
+  {
+    "name": "machine_nameplate_serial",
+    "ocr": "KIRLOSKAR PUMP\nModel: KDS-1.520+\nSr. No: KP-2024-08-11735\nHP: 2.0\nRPM: 2880\nPhase: 1",
+    "transcript": "Nameplate of the Kirloskar pump installed in basement B2. Serial number is KP 2024 08 11735. Log it for AMC tracking.",
+    "expect": {
+      "min_actions": 1,
+      "must_contain": ["KP-2024-08-11735", "Kirloskar"]
+    }
+  },
+  {
+    "name": "empty_ocr_voice_only",
+    "ocr": "",
+    "transcript": "Remind me to call Suresh bhai tomorrow about the plumbing work estimate. He said around twenty-five thousand for the whole job.",
+    "expect": {
+      "min_actions": 1,
+      "must_contain": ["Suresh"]
+    }
+  },
+  {
+    "name": "voice_note_no_date",
+    "ocr": "",
+    "transcript": "We need to order more sand. Talk to Manoj at the supplier. Get a quote for two truck loads.",
+    "expect": {
+      "min_actions": 1,
+      "must_contain": ["sand"]
+    }
+  },
+  {
+    "name": "bilingual_hindi_english",
+    "ocr": "साइट रिपोर्ट / Site Report\nDate: 01/09/2026\nBlock C - RCC casting done\nLabour: 12 masons, 8 helpers\nConcrete: M25 grade, 4 cubic metres",
+    "transcript": "Aaj Block C ka RCC casting ho gaya. Twelve masons aur eight helpers lage the. Kal se Block D start karna hai. Vijay bhai ne bola painting material bhi mangwa lo.",
+    "expect": {
+      "min_actions": 1,
+      "must_contain": ["Block"]
+    }
+  },
+  {
+    "name": "ocr_noise_no_content",
+    "ocr": "xj##2 ...\n~~~ ??? %%\n[unreadable] ----",
+    "transcript": "",
+    "expect": {
+      "min_actions": 0,
+      "must_contain": []
+    }
+  }
+]
