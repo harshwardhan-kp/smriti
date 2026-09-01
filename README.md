@@ -3,6 +3,17 @@
 **Your phone remembers your work. Point the camera, say one line, ask it anything later.
 Nothing ever leaves the device.**
 
+<div align="center">
+
+### ▶ [Watch the 2-minute demo](https://youtu.be/I66cuY9YyFk)
+
+[<img src="docs/demo-poster.jpg" width="300" alt="Smriti running on a Moto G05 — camera live, OFFLINE / ON-DEVICE badge visible">](https://youtu.be/I66cuY9YyFk)
+
+*Capture, structured extraction, timeline, and spoken recall with photo evidence —
+running on a Moto G05.*
+
+</div>
+
 An offline camera-and-voice work log for people whose work does not happen at a desk — site
 engineers, shop owners, lab technicians, field staff. You never type. Press once: the camera
 captures the artefact in front of you and you say one line about it. On-device OCR reads the
