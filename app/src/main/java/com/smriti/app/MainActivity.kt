@@ -34,6 +34,10 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.smriti.app.ui.AskScreen
+import com.smriti.app.ui.CaptureScreen
+import com.smriti.app.ui.DetailScreen
+import com.smriti.app.ui.TimelineScreen
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.smriti.app.ui.theme.SmritiTheme
@@ -57,14 +61,22 @@ fun SmritiApp() {
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
             NavHost(
                 navController = navController,
-                startDestination = "timeline",
+                // Capture is the app. The timeline is where you go afterwards.
+                startDestination = "capture",
                 modifier = Modifier.padding(innerPadding)
             ) {
                 composable("capture") {
-                    PlaceholderScreen(name = "Capture")
+                    CaptureScreen(
+                        onOpenTimeline = { navController.navigate("timeline") },
+                        onOpenAsk = { navController.navigate("ask") },
+                        onRecordSaved = { id -> navController.navigate("detail/$id") }
+                    )
                 }
                 composable("timeline") {
-                    PlaceholderScreen(name = "Timeline")
+                    TimelineScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenRecord = { id -> navController.navigate("detail/$id") }
+                    )
                 }
                 composable(
                     route = "detail/{id}",
@@ -75,10 +87,16 @@ fun SmritiApp() {
                     )
                 ) { backStackEntry ->
                     val recordId = backStackEntry.arguments?.getLong("id") ?: 0L
-                    PlaceholderScreen(name = "Detail: $recordId")
+                    DetailScreen(
+                        recordId = recordId,
+                        onBack = { navController.popBackStack() }
+                    )
                 }
                 composable("ask") {
-                    PlaceholderScreen(name = "Ask")
+                    AskScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenRecord = { id -> navController.navigate("detail/$id") }
+                    )
                 }
             }
         }
@@ -150,19 +168,5 @@ fun PermissionGate(
                 }
             }
         }
-    }
-}
-
-@Composable
-fun PlaceholderScreen(name: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = name,
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground
-        )
     }
 }

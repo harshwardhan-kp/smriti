@@ -60,13 +60,9 @@ a wrapper, run `gradle wrapper` in a throwaway empty directory and copy `gradlew
 - [ ] On-device inference numbers — needs the borrowed phone plugged back in
 
 ### Next
-- [ ] Task 3: CameraX capture + ML Kit OCR
-- [ ] Task 4: ASR behind the `Asr` interface
-- [ ] Task 5: LlmEngine + Extractor with JSON repair
-- [ ] Task 6: Embedder + Recall
-- [ ] Task 7: the four screens
-- [ ] Task 8: demo rehearsal + seed data
-- [ ] 3-minute pitch script
+- [ ] Task 8: seed data for demo rehearsal + an on-device smoke run
+- [ ] Swap PlatformAsr for whisper.cpp if offline Hindi proves unreliable on the loaner
+- [ ] Bundle an embedder .tflite into assets (Recall currently falls back to keyword scoring)
 
 ## Log
 
@@ -79,3 +75,23 @@ One fix needed, and it was my spec's fault not the worker's: I asked for
 Correct form is `ORDER BY dueDateMillis IS NULL ASC, dueDateMillis ASC`.
 
 Private GitHub repos created: harshwardhan-kp/smriti and harshwardhan-kp/iqoo-hackathon-2026.
+
+### 2026-09-01 13:35 — Tasks 3 to 7 done, app is functionally complete
+All four screens built and wired. `BUILD SUCCESSFUL`, 11 unit tests green.
+
+Worker errors caught and fixed by rebuilding rather than trusting "done":
+- CapturePipeline guessed RecordEntity field names (`tasksJson`, missing `createdAt`)
+- `ProgressListener` referenced as a nested class of `LlmInference`; it is top-level
+- `Extractor` had a redundant secondary constructor clashing on JVM signature
+- `AskScreen` called `asr.listen()`; the interface method is `transcribe()`
+- `Icons.Default.Mic` is not in material-icons-core, needs material-icons-extended
+- **The nav graph still pointed at PlaceholderScreen for all four routes.** The build was
+  green and the app would have launched into empty screens. This is the one that would have
+  shipped broken; only rebuilding and reading the nav graph caught it.
+
+Also fixed my own missing `lifecycle-viewmodel-compose` dependency before the screens landed.
+
+Start destination changed from "timeline" to "capture" — capture is the app.
+
+`PITCH.md` written: 3-minute script, stage directions, contingency table, and the exact
+answer to give if a judge asks about the NPU.

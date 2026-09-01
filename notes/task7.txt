@@ -1,0 +1,99 @@
+Do NOT use tools and do NOT read files. Output ONLY file contents: for each file a line `FILE: <relative/path>` followed immediately by one fenced code block with the complete file. No prose anywhere.
+
+Project: Smriti, offline Android app. Kotlin 2.0.21, Jetpack Compose Material3, minSdk 26,
+package `com.smriti.app`. Compose BOM 2024.09.03. NO INTERNET PERMISSION.
+
+EXISTING API — use exactly, do not invent members:
+
+```
+com.smriti.app.data.RecordEntity(id: Long, createdAt: Long, photoPath: String, ocrText: String,
+    transcript: String, title: String, summary: String, peopleJson: String, amountsJson: String,
+    tagsJson: String, embedding: ByteArray?)
+com.smriti.app.data.TaskEntity(id: Long, recordId: Long, text: String, dueDateMillis: Long?, done: Boolean)
+com.smriti.app.data.RecordDao:
+    fun observeRecords(): Flow<List<RecordEntity>>
+    suspend fun insertRecord(r: RecordEntity): Long
+    suspend fun insertTasks(t: List<TaskEntity>)
+    suspend fun getRecord(id: Long): RecordEntity?
+    fun observeTasks(): Flow<List<TaskEntity>>
+    fun observeTasksForRecord(recordId: Long): Flow<List<TaskEntity>>
+    suspend fun setTaskDone(id: Long, done: Boolean)
+    suspend fun allRecordsWithEmbedding(): List<RecordEntity>
+    suspend fun countRecords(): Int
+com.smriti.app.data.SmritiDb.get(context): SmritiDb   // exposes .recordDao()
+com.smriti.app.capture.CameraController(context)      // bind(lifecycleOwner, previewView), capture(), unbind()
+com.smriti.app.capture.PlatformAsr(context) : Asr
+com.smriti.app.capture.CapturePipeline(context, dao, camera, asr).run(withVoice: Boolean): Flow<CaptureStage>
+com.smriti.app.capture.CaptureStage = Photo | Reading | Listening | Thinking | Done(recordId: Long) | Failed(reason: String)
+com.smriti.app.ai.LlmHolder.get(context): Result<LlmEngine>
+com.smriti.app.ai.Recall(dao, engine, embedder, converters).ask(question): RecallAnswer
+com.smriti.app.ai.RecallAnswer(answer: String, evidenceRecordId: Long?, evidencePhotoPath: String?, usedRecordIds: List<Long>)
+com.smriti.app.ai.Embedder.create(context): Result<Embedder>
+com.smriti.app.data.Converters()
+```
+
+Theme `SmritiTheme` exists. Palette: ink #0B0B0B, cream #FBF8F1, amber #F2B705.
+
+WRITE THESE FILES:
+
+1. `app/src/main/java/com/smriti/app/ui/CaptureViewModel.kt`
+   - `class CaptureViewModel(app: Application) : AndroidViewModel(app)`
+   - Holds the CameraController, PlatformAsr, dao and CapturePipeline.
+   - `val stage: StateFlow<CaptureStage?>`, `val lastRecordId: StateFlow<Long?>`
+   - `fun bindCamera(owner: LifecycleOwner, view: PreviewView)`
+   - `fun capture(withVoice: Boolean)` — collects the pipeline flow into `stage` in viewModelScope
+   - `override fun onCleared()` unbinds the camera.
+
+2. `app/src/main/java/com/smriti/app/ui/CaptureScreen.kt`
+   - Full-bleed CameraX `PreviewView` inside `AndroidView`, bound via the ViewModel.
+   - One large circular capture button at the bottom centre, amber, 84.dp.
+     `pointerInput` with `detectTapGestures(onTap = { capture(false) }, onLongPress = { capture(true) })`.
+     While long-pressed show a red recording ring and the label "LISTENING — release to stop".
+   - Small label above the button: "Tap for a photo · Hold to add your voice".
+   - A status strip that renders the current CaptureStage as human text:
+     Photo -> "Capturing", Reading -> "Reading the image", Listening -> "Listening",
+     Thinking -> "Understanding, on this phone", Done -> "Saved", Failed -> the reason in red.
+   - A top-right text button "Timeline" and a top-left one "Ask", both taking nav lambdas.
+   - An offline badge in the top centre: a small pill reading "OFFLINE · ON-DEVICE" in amber.
+   - Signature: `@Composable fun CaptureScreen(onOpenTimeline: () -> Unit, onOpenAsk: () -> Unit, onRecordSaved: (Long) -> Unit, vm: CaptureViewModel = viewModel())`
+
+3. `app/src/main/java/com/smriti/app/ui/TimelineViewModel.kt`
+   - `class TimelineViewModel(app: Application) : AndroidViewModel(app)`
+   - `val records: StateFlow<List<RecordEntity>>` from `observeRecords()`, `val tasks: StateFlow<List<TaskEntity>>` from `observeTasks()`, both with `stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())`
+   - `fun toggleTask(id: Long, done: Boolean)`
+
+4. `app/src/main/java/com/smriti/app/ui/TimelineScreen.kt`
+   - A LazyColumn. First a sticky section "Open tasks" listing incomplete TaskEntity rows with a
+     Checkbox and, when `dueDateMillis` is non-null, a date chip that turns red when overdue.
+   - Then "Timeline", a card per record: a 56.dp rounded thumbnail loaded from `photoPath` via
+     `BitmapFactory.decodeFile` inside `remember(photoPath)` with `inSampleSize = 4`, the title in
+     bold, the relative time ("2 hours ago" — write a small local formatter, do not add a library),
+     and the tags parsed from `tagsJson` with Gson rendered as small amber pills.
+   - Empty state: "Nothing captured yet. Point the camera at something and talk."
+   - Signature: `@Composable fun TimelineScreen(onBack: () -> Unit, onOpenRecord: (Long) -> Unit, vm: TimelineViewModel = viewModel())`
+
+5. `app/src/main/java/com/smriti/app/ui/DetailScreen.kt`
+   - Loads one record with `LaunchedEffect(id) { dao.getRecord(id) }` via a small
+     `DetailViewModel(app)` you also write in this file, plus `observeTasksForRecord(id)`.
+   - Shows: the photo full width with a 4:3 aspect ratio and rounded corners, the title,
+     the summary, chips for people and tags, a formatted amounts list, the task list with
+     checkboxes, and two collapsible raw sections "What the camera read" (ocrText) and
+     "What you said" (transcript). Collapsed by default — the structured view is the product,
+     the raw text is the receipt.
+   - Signature: `@Composable fun DetailScreen(recordId: Long, onBack: () -> Unit)`
+
+6. `app/src/main/java/com/smriti/app/ui/AskScreen.kt`
+   - Plus an `AskViewModel(app) : AndroidViewModel(app)` in the same file that lazily builds
+     Recall from LlmHolder + Embedder.create + Converters, exposing
+     `val answer: StateFlow<RecallAnswer?>`, `val busy: StateFlow<Boolean>`, `fun ask(q: String)`.
+   - UI: a text field with placeholder "What did I commit to this week?", a mic button that runs
+     PlatformAsr and fills the field, and an ASK button.
+   - While busy: a progress indicator with the text "Thinking on this device".
+   - The answer in a large card. Below it, when `evidencePhotoPath` is non-null, a section headed
+     "Evidence" showing that photo — tappable to open the record.
+   - Signature: `@Composable fun AskScreen(onBack: () -> Unit, onOpenRecord: (Long) -> Unit, vm: AskViewModel = viewModel())`
+
+Use `androidx.lifecycle.viewmodel.compose.viewModel()`. Add
+`implementation("androidx.lifecycle:lifecycle-viewmodel-compose")` assumptions — it is present.
+Do NOT use Coil, Glide, Accompanist, Hilt, or any image or DI library. Decode bitmaps by hand.
+Every file must compile with no unresolved references.
