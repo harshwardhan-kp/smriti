@@ -1,0 +1,75 @@
+Output ONLY file contents. For each file emit `FILE: <relative/path>` with NO backticks, then one fenced code block with the COMPLETE file. No prose.
+
+Android, Kotlin 2.0.21, package com.smriti.app. Existing, use exactly:
+```
+com.smriti.app.data.RecordEntity(id: Long = 0, createdAt: Long, photoPath: String, ocrText: String,
+    transcript: String, title: String, summary: String, peopleJson: String, amountsJson: String,
+    tagsJson: String, embedding: ByteArray?)
+com.smriti.app.data.TaskEntity(id: Long = 0, recordId: Long, text: String, dueDateMillis: Long?, done: Boolean = false)
+com.smriti.app.data.RecordDao
+    suspend fun insertRecord(r: RecordEntity): Long
+    suspend fun insertTasks(t: List<TaskEntity>)
+    suspend fun countRecords(): Int
+com.smriti.app.data.SmritiDb.get(context): SmritiDb    // exposes recordDao()
+```
+Gson is available. There is an adb-triggerable `SelfTest` object already using the pattern
+`intent.getBooleanExtra("smriti_selftest", false)` handled in MainActivity.onCreate.
+
+WRITE ONE FILE: `app/src/main/java/com/smriti/app/DemoSeed.kt`
+
+`object DemoSeed`
+
+Purpose, put this in the Kdoc: the recall demo is worthless with an empty database — asking
+"what did I commit to this week?" needs something to find. This seeds a realistic corpus for
+rehearsal. It is a demo affordance, not test fixtures, and it must be obvious in the UI that
+these are seeded, so every seeded record carries the tag "seed".
+
+API:
+  `suspend fun seed(context: Context, force: Boolean = false): Int`
+    - If `countRecords() > 0` and !force, return 0 without touching anything.
+    - Otherwise insert the records below and their tasks, and return the number of records added.
+  `suspend fun clear(context: Context): Int` — deletes only records whose tagsJson contains
+    "seed", plus their tasks. Add whatever @Query you need by declaring it in a NEW dao file
+    `app/src/main/java/com/smriti/app/data/SeedDao.kt` — no, do NOT create a new dao. Instead
+    implement clear() using the existing dao surface plus a raw SupportSQLiteDatabase call via
+    `SmritiDb.get(context).openHelper.writableDatabase.execSQL(...)`. Delete from tasks first
+    (foreign-key order), then records.
+
+  `fun photoPlaceholder(context: Context, index: Int): String` — writes a small generated JPEG
+    into `context.filesDir/photos/seed_<index>.jpg` if absent and returns its absolute path.
+    Generate it with android.graphics.Bitmap/Canvas: a 480x640 bitmap filled with a muted colour
+    that varies by index, with the record title drawn on it in white using a Paint with
+    textSize 28f, wrapped naively across lines at 26 characters. Compress to JPEG quality 80.
+    This exists so the timeline and the Evidence panel have something real to render.
+
+SEED CONTENT: 9 records, spread over the last 6 days using
+`System.currentTimeMillis() - daysAgo * 86_400_000L`, realistic Indian workplace material:
+
+ 1. "Sprint sync — API cutover" · people ["Rohit","Priya"] · tags ["seed","api","sprint"]
+    tasks: "Rohit ships the auth API" due 4 days from now; "Order 200 more units" no due date
+ 2. "Delivery challan — Sharma Traders" · amounts [{value 200, currency "units", label "steel brackets"}]
+    tags ["seed","delivery","vendor"] · task: "Verify challan against PO" due 2 days from now
+ 3. "Invoice 4471 — Anand Electricals" · amounts [{value 84500.0,"INR","invoice total"}]
+    tags ["seed","invoice","finance"] · task: "Pay invoice 4471" due 6 days from now
+ 4. "Compressor nameplate — Unit B" · tags ["seed","maintenance"] · no tasks,
+    ocrText containing a plausible serial and rating plate text
+ 5. "Site note — third floor pour" · people ["Ganesh"] · tags ["seed","site"]
+    task: "Reschedule pour after rain" due tomorrow
+ 6. "Lab log — batch 22" · tags ["seed","lab"] · task "Repeat titration for batch 22" no due date
+ 7. "Whiteboard — hiring loop" · people ["Meera"] · tags ["seed","hiring"]
+    task: "Send Meera the interview rubric" due 3 days from now
+ 8. "Hindi site note" · transcript in Devanagari about cement bags arriving late,
+    tags ["seed","site","hindi"] · task "Follow up on cement delivery" due 2 days from now
+ 9. "Meter reading — DG set" · amounts [{value 1284.0,"hours","runtime"}] · tags ["seed","maintenance"]
+
+Each record needs a plausible `ocrText` (what a camera would have read off the artefact) and a
+plausible `transcript` (one spoken sentence). Set `embedding = null`. Encode people/amounts/tags
+with Gson. `photoPath` from photoPlaceholder(context, index).
+
+Wire it so it can be triggered over adb: emit a second COMPLETE file
+`app/src/main/java/com/smriti/app/SeedTrigger.kt` containing
+`object SeedTrigger { const val EXTRA = "smriti_seed" ; const val EXTRA_CLEAR = "smriti_seed_clear" ; fun handle(context: Context, scope: CoroutineScope, seed: Boolean, clear: Boolean) }`
+which launches on Dispatchers.IO, calls clear() then seed(force = true) as requested, and logs
+counts to Log tag "SmritiSeed".
+
+Kotlin 2.0.21. Must compile. Do not modify MainActivity in your output.

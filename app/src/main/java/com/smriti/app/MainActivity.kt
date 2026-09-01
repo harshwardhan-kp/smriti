@@ -50,6 +50,15 @@ class MainActivity : ComponentActivity() {
 
         // Debug affordance. MIUI denies INJECT_EVENTS to the shell user, so the capture button
         // cannot be tapped over adb; this is how the model gets exercised headlessly.
+        // Demo corpus, adb-triggerable:
+        //   adb shell am start -n <pkg>/com.smriti.app.MainActivity --ez smriti_seed true
+        //   ... --ez smriti_seed_clear true   to remove seeded records
+        val wantSeed = intent?.getBooleanExtra(SeedTrigger.EXTRA, false) == true
+        val wantClear = intent?.getBooleanExtra(SeedTrigger.EXTRA_CLEAR, false) == true
+        if (wantSeed || wantClear) {
+            SeedTrigger.handle(this, lifecycleScope, seed = wantSeed, clear = wantClear)
+        }
+
         if (intent?.getBooleanExtra(SelfTest.EXTRA, false) == true) {
             SelfTest.run(
                 context = this,
