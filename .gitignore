@@ -7,3 +7,6 @@ build/
 local.properties
 build.log
 local.properties
+final.log
+lint.log
+test.log
