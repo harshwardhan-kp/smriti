@@ -90,3 +90,52 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
 }
+
+/**
+ * Smriti's entire pitch is that the app cannot reach the network. That claim is only true if
+ * nothing re-introduces INTERNET through a transitive dependency's manifest — which ML Kit's
+ * datatransport backend did, silently, on 2026-09-01.
+ *
+ * This task reads the MERGED manifest, which is what actually ships, and fails the build if
+ * either network permission is present. A green build is now proof of the claim.
+ */
+val forbiddenPermissions = listOf(
+    "android.permission.INTERNET",
+    "android.permission.ACCESS_NETWORK_STATE"
+)
+
+tasks.register("assertNoNetworkPermission") {
+    group = "verification"
+    description = "Fails if a network permission survives manifest merging."
+    doLast {
+        val manifests = fileTree(layout.buildDirectory.dir("intermediates")) {
+            include("**/merged_manifest*/**/AndroidManifest.xml")
+            include("**/packaged_manifests/**/AndroidManifest.xml")
+        }.files
+        require(manifests.isNotEmpty()) { "No merged manifest found - run a build first." }
+
+        val offenders = mutableListOf<String>()
+        manifests.forEach { file ->
+            val text = file.readText()
+            forbiddenPermissions.forEach { perm ->
+                if (text.contains(perm)) offenders += "$perm in ${file.name} (${file.parentFile.name})"
+            }
+        }
+        if (offenders.isNotEmpty()) {
+            throw GradleException(
+                "Network permission leaked into the merged manifest:\n" +
+                    offenders.joinToString("\n") { "  - $it" } +
+                    "\n\nFind the source with:\n" +
+                    "  grep -B2 'uses-permission#android.permission.INTERNET' " +
+                    "app/build/outputs/logs/manifest-merger-debug-report.txt\n" +
+                    "then strip it with tools:node=\"remove\" in app/src/main/AndroidManifest.xml."
+            )
+        }
+        logger.lifecycle("assertNoNetworkPermission: clean - ${manifests.size} merged manifest(s) carry no network permission.")
+    }
+}
+
+afterEvaluate {
+    tasks.named("assembleDebug") { finalizedBy("assertNoNetworkPermission") }
+    tasks.findByName("assembleRelease")?.finalizedBy("assertNoNetworkPermission")
+}

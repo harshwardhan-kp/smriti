@@ -71,7 +71,7 @@ class CapturePipeline(
                 photoPath = photoFile.absolutePath,
                 ocrText = ocrText,
                 transcript = transcript,
-                title = structured.title.ifBlank { transcript.ifBlank { ocrText }.take(60) },
+                title = titleFor(structured.title, transcript, ocrText),
                 summary = structured.summary,
                 peopleJson = gson.toJson(structured.people),
                 amountsJson = gson.toJson(structured.amounts),
@@ -97,6 +97,29 @@ class CapturePipeline(
             emit(CaptureStage.Failed(t.message ?: "Capture pipeline failed"))
         }
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * Titles reach the timeline verbatim, so they have to survive raw OCR.
+     *
+     * Observed on a Redmi Note 10S, 2026-09-01: a photograph of a laptop screen produced a
+     * title containing embedded newlines, which rendered as a three-line timeline card. And a
+     * photograph of a blank surface produced an empty title and a card with no text at all.
+     *
+     * So: collapse all whitespace, trim, cut on a word boundary, and never return blank.
+     */
+    private fun titleFor(modelTitle: String, transcript: String, ocrText: String): String {
+        val source = modelTitle.ifBlank { transcript }.ifBlank { ocrText }
+        val flat = source.replace(Regex("\\s+"), " ").trim()
+        if (flat.isEmpty()) {
+            val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date())
+            return "Untitled capture · $clock"
+        }
+        if (flat.length <= 60) return flat
+        val cut = flat.take(60)
+        val lastSpace = cut.lastIndexOf(' ')
+        return if (lastSpace > 30) cut.take(lastSpace) + "…" else cut + "…"
+    }
 
     /**
      * A 1B model emits dates in whatever shape it feels like. Accept ISO-8601 and nothing else;
