@@ -1,0 +1,76 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.14/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDevcloudDebugBuild UP-TO-DATE
+> Task :app:mergeDevcloudDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateDevcloudDebugBuildConfig
+> Task :app:checkDevcloudDebugAarMetadata
+> Task :app:processDevcloudDebugNavigationResources
+> Task :app:generateDevcloudDebugResValues
+> Task :app:compileDevcloudDebugNavigationResources
+> Task :app:mapDevcloudDebugSourceSetPaths
+> Task :app:generateDevcloudDebugResources
+> Task :app:packageDevcloudDebugResources
+> Task :app:createDevcloudDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDevcloudDebug
+> Task :app:parseDevcloudDebugLocalResources
+> Task :app:mergeDevcloudDebugResources
+> Task :app:processDevcloudDebugMainManifest
+> Task :app:processDevcloudDebugManifest
+> Task :app:processDevcloudDebugManifestForPackage
+> Task :app:javaPreCompileDevcloudDebug
+> Task :app:mergeDevcloudDebugShaders
+> Task :app:compileDevcloudDebugShaders NO-SOURCE
+> Task :app:generateDevcloudDebugAssets UP-TO-DATE
+> Task :app:mergeDevcloudDebugAssets
+> Task :app:desugarDevcloudDebugFileDependencies
+> Task :app:compressDevcloudDebugAssets
+> Task :app:mergeDevcloudDebugJniLibFolders
+> Task :app:checkDevcloudDebugDuplicateClasses
+> Task :app:validateSigningDevcloudDebug
+> Task :app:writeDevcloudDebugAppMetadata
+> Task :app:mergeLibDexDevcloudDebug
+> Task :app:writeDevcloudDebugSigningConfigVersions
+> Task :app:processDevcloudDebugResources
+> Task :app:mergeDevcloudDebugNativeLibs
+
+> Task :app:stripDevcloudDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libimage_processing_util_jni.so, libllm_inference_engine_jni.so, libmediapipe_tasks_jni.so, libmlkit_google_ocr_pipeline.so, libsurface_util_jni.so. Run with --info option to learn more.
+
+> Task :app:kspDevcloudDebugKotlin
+> Task :app:mergeExtDexDevcloudDebug
+
+> Task :app:compileDevcloudDebugKotlin
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/SelfTest.kt:5:8 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/SelfTest.kt:51:26 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/SelfTest.kt:52:26 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:4:8 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:5:8 'interface ProgressListener<OutputT : Any!> : Any' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:18:28 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:72:27 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:73:27 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:79:38 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:81:46 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:83:40 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:93:34 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:95:42 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:97:36 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:101:38 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:103:46 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:105:40 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ui/CaptureScreen.kt:59:26 'val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+
+> Task :app:compileDevcloudDebugJavaWithJavac
+> Task :app:dexBuilderDevcloudDebug
+> Task :app:mergeDevcloudDebugGlobalSynthetics
+> Task :app:processDevcloudDebugJavaRes
+> Task :app:mergeProjectDexDevcloudDebug
+> Task :app:mergeDevcloudDebugJavaResource
+> Task :app:packageDevcloudDebug
+> Task :app:createDevcloudDebugApkListingFileRedirect
+> Task :app:assembleDevcloudDebug
+
+BUILD SUCCESSFUL in 45s
+40 actionable tasks: 40 executed

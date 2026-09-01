@@ -56,8 +56,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.smriti.app.ai.BackendFactory
 import com.smriti.app.ai.Embedder
-import com.smriti.app.ai.LlmHolder
 import com.smriti.app.ai.Recall
 import com.smriti.app.ai.RecallAnswer
 import com.smriti.app.capture.PlatformAsr
@@ -92,9 +92,9 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun getOrCreateRecall(): Recall? = withContext(Dispatchers.IO) {
         recall?.let { return@withContext it }
         val context = getApplication<Application>()
-        val engine = LlmHolder.get(context).getOrNull() ?: return@withContext null
-        val embedder = Embedder.create(context).getOrNull() ?: return@withContext null
-        val newRecall = Recall(dao, engine, embedder, converters)
+        val backend = BackendFactory.create(context).getOrNull() ?: return@withContext null
+        val embedder = Embedder.create(context).getOrNull()
+        val newRecall = Recall(dao, backend, embedder, converters)
         recall = newRecall
         newRecall
     }
@@ -302,7 +302,20 @@ fun AskScreen(
 
                     val evidenceBitmap: ImageBitmap? = remember(ans.evidencePhotoPath) {
                         try {
-                            BitmapFactory.decodeFile(ans.evidencePhotoPath)?.asImageBitmap()
+                            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            BitmapFactory.decodeFile(ans.evidencePhotoPath, boundsOpts)
+                            val sampleSize = run {
+                                val maxDim = 1024
+                                var s = 1
+                                val w = boundsOpts.outWidth
+                                val h = boundsOpts.outHeight
+                                while ((w / s) > maxDim || (h / s) > maxDim) {
+                                    s *= 2
+                                }
+                                s
+                            }
+                            val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                            BitmapFactory.decodeFile(ans.evidencePhotoPath, decodeOpts)?.asImageBitmap()
                         } catch (e: Exception) {
                             null
                         }

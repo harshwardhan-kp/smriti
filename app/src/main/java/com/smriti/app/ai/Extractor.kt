@@ -6,24 +6,24 @@ import java.time.LocalDate
 /**
  * Turns an OCR string plus a voice transcript into a [StructuredRecord].
  *
- * [engine] is nullable so `repairJson` can be unit-tested without loading a 550 MB model.
- * A null engine always yields the fallback record.
+ * [backend] is nullable so `repairJson` can be unit-tested without loading a 550 MB model.
+ * A null backend always yields the fallback record.
  */
-class Extractor(private val engine: LlmEngine? = null) {
+class Extractor(private val backend: LlmBackend? = null) {
 
     private val gson = Gson()
 
     suspend fun extract(ocrText: String, transcript: String): StructuredRecord {
         val fallbackText = transcript.ifBlank { ocrText }
-        val activeEngine = engine ?: return StructuredRecord.fallback(fallbackText)
+        val activeBackend = backend ?: return StructuredRecord.fallback(fallbackText)
 
         return try {
             val prompt1 = buildPrompt(ocrText, transcript, includeOcr = true)
-            val response1 = activeEngine.generate(prompt1)
-            parseJson(response1) ?: retryShortened(activeEngine, transcript, fallbackText)
+            val response1 = activeBackend.generate(prompt1)
+            parseJson(response1) ?: retryShortened(activeBackend, transcript, fallbackText)
         } catch (e: Throwable) {
             try {
-                retryShortened(activeEngine, transcript, fallbackText)
+                retryShortened(activeBackend, transcript, fallbackText)
             } catch (retryError: Throwable) {
                 StructuredRecord.fallback(fallbackText)
             }
@@ -31,12 +31,12 @@ class Extractor(private val engine: LlmEngine? = null) {
     }
 
     private suspend fun retryShortened(
-        activeEngine: LlmEngine,
+        activeBackend: LlmBackend,
         transcript: String,
         fallbackText: String
     ): StructuredRecord {
         val prompt2 = buildPrompt(ocrText = "", transcript = transcript, includeOcr = false)
-        val response2 = activeEngine.generate(prompt2)
+        val response2 = activeBackend.generate(prompt2)
         return parseJson(response2) ?: StructuredRecord.fallback(fallbackText)
     }
 

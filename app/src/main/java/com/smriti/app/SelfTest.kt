@@ -2,16 +2,14 @@ package com.smriti.app
 
 import android.content.Context
 import android.util.Log
-import com.google.mediapipe.tasks.genai.llminference.LlmInference
-import com.smriti.app.ai.BackendPolicy
+import com.smriti.app.ai.BackendFactory
 import com.smriti.app.ai.Extractor
-import com.smriti.app.ai.LlmHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * A headless end-to-end check of the on-device language model, triggerable over adb:
+ * A headless end-to-end check of the language model, triggerable over adb:
  *
  *     adb shell am start -n com.smriti.app/.MainActivity --ez smriti_selftest true
  *     adb logcat -s SmritiBench:V
@@ -35,6 +33,8 @@ object SelfTest {
     /**
      * @param backend "cpu", "gpu" or null for the policy default.
      * @param resetPolicy clears any GPU quarantine before running.
+     * Note: backend and resetPolicy are honoured only by the offline flavor's BackendFactory.
+     * In the devcloud flavor they are logged but otherwise ignored.
      */
     fun run(
         context: Context,
@@ -43,44 +43,27 @@ object SelfTest {
         resetPolicy: Boolean = false
     ) {
         scope.launch(Dispatchers.IO) {
-            if (resetPolicy) {
-                BackendPolicy(context).reset()
-                Log.i(TAG, "backend policy reset")
-            }
-            val forced = when (backend?.lowercase()) {
-                "cpu" -> LlmInference.Backend.CPU
-                "gpu" -> LlmInference.Backend.GPU
-                else -> null
-            }
+            // backend and resetPolicy only affect the offline flavor; devcloud ignores them.
             Log.i(TAG, "requested backend: ${backend ?: "auto"}")
+            Log.i(TAG, "resetPolicy: $resetPolicy")
             Log.i(TAG, "=== SELF TEST START ===")
 
-            val model = ModelProvisioner.locate(context)
-            if (model == null) {
-                Log.e(TAG, "no model found")
-                Log.e(TAG, ModelProvisioner.missingMessage(context))
-                Log.i(TAG, "=== SELF TEST END (no model) ===")
-                return@launch
-            }
-            Log.i(TAG, "model: ${model.label}")
-            Log.i(TAG, "path : ${model.file.absolutePath}")
-
             val loadStart = System.currentTimeMillis()
-            val engineResult = LlmHolder.get(context, forced)
+            val backendResult = BackendFactory.create(context)
             val loadMs = System.currentTimeMillis() - loadStart
 
-            val engine = engineResult.getOrElse { t ->
+            val llmBackend = backendResult.getOrElse { t ->
                 Log.e(TAG, "load FAILED after ${loadMs}ms: ${t.javaClass.simpleName}: ${t.message}")
                 Log.i(TAG, "=== SELF TEST END (load failed) ===")
                 return@launch
             }
-            Log.i(TAG, "backend: ${engine.backend}")
+            Log.i(TAG, "backend: ${llmBackend.label}")
             Log.i(TAG, "load: ${loadMs} ms")
 
             // Raw generation timing.
             val genStart = System.currentTimeMillis()
             val raw = try {
-                engine.generate(PROMPT)
+                llmBackend.generate(PROMPT)
             } catch (t: Throwable) {
                 Log.e(TAG, "generate FAILED: ${t.javaClass.simpleName}: ${t.message}")
                 Log.i(TAG, "=== SELF TEST END (generate failed) ===")
@@ -101,7 +84,7 @@ object SelfTest {
 
             // And the part that actually matters: does the repair path yield usable structure?
             val extractStart = System.currentTimeMillis()
-            val structured = Extractor(engine).extract(ocrText = "", transcript = PROMPT)
+            val structured = Extractor(llmBackend).extract(ocrText = "", transcript = PROMPT)
             val extractMs = System.currentTimeMillis() - extractStart
 
             Log.i(TAG, "extract: ${extractMs} ms")

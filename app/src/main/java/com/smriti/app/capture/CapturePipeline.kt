@@ -2,8 +2,8 @@ package com.smriti.app.capture
 
 import android.content.Context
 import com.google.gson.Gson
+import com.smriti.app.ai.BackendFactory
 import com.smriti.app.ai.Extractor
-import com.smriti.app.ai.LlmHolder
 import com.smriti.app.ai.Ocr
 import com.smriti.app.ai.StructuredRecord
 import com.smriti.app.data.RecordDao
@@ -62,8 +62,8 @@ class CapturePipeline(
             // The language model is optional at runtime. If it is missing or fails to load,
             // Extractor(null) yields a fallback record built from the raw text. A capture is
             // never lost because the model was unavailable.
-            val engine = LlmHolder.get(context).getOrNull()
-            val structured: StructuredRecord = Extractor(engine).extract(ocrText, transcript)
+            val backend = BackendFactory.create(context).getOrNull()
+            val structured: StructuredRecord = Extractor(backend).extract(ocrText, transcript)
 
             val gson = Gson()
             val record = RecordEntity(

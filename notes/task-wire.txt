@@ -1,0 +1,84 @@
+Output ONLY file contents. For each file emit `FILE: <relative/path>` with NO backticks, then one fenced code block with the COMPLETE file. No prose.
+
+Android project com.smriti.app, Kotlin 2.0.21. A flavor split was just added:
+
+```
+interface LlmBackend { val label: String ; suspend fun generate(prompt: String, maxTokens: Int = 512): String ; fun close() {} }
+class LocalLlmBackend(engine: LlmEngine) : LlmBackend            // in main
+object BackendFactory { suspend fun create(context: Context): Result<LlmBackend> }
+```
+`BackendFactory` has two flavor-specific implementations (offline -> LocalLlmBackend, devcloud -> MuseBackend). Callers must go through BackendFactory and must NOT reference LlmEngine or LlmHolder directly any more.
+
+Existing code to change (all currently typed against LlmEngine):
+
+`Extractor` — `class Extractor(private val engine: LlmEngine? = null)`, method
+`suspend fun extract(ocrText: String, transcript: String): StructuredRecord`, plus an
+`internal fun repairJson(raw: String): String` and a private lenient `parseJson`. It calls
+`engine.generate(prompt)` once, retries once with a shortened prompt on parse failure, and
+falls back to `StructuredRecord.fallback(...)`. It must NEVER throw.
+
+`CapturePipeline` — currently does:
+```
+val engine = LlmHolder.get(context).getOrNull()
+val structured: StructuredRecord = Extractor(engine).extract(ocrText, transcript)
+```
+
+`Recall` — `class Recall(dao, engine: LlmEngine, embedder: Embedder?, converters: Converters)`
+with `suspend fun ask(question: String): RecallAnswer`. It calls `engine.generate(prompt)`.
+
+`SelfTest` (object, in com.smriti.app) — calls `LlmHolder.get(context, forced)`, logs
+`engine.backend`, `engine.generate(PROMPT)`, then `Extractor(engine).extract(...)`.
+It has params `(context, scope, backend: String?, resetPolicy: Boolean)` and logs to tag
+"SmritiBench". Keep the adb-triggerable behaviour and all the timing logs
+(load ms, generate ms, approx tokens, tokens/sec, raw output, extract ms, title/summary/
+people/tags/actions).
+
+`AskScreen.kt` contains an `AskViewModel` that builds Recall from `LlmHolder` + `Embedder.create`
++ `Converters`, exposing `answer: StateFlow<RecallAnswer?>`, `busy: StateFlow<Boolean>`,
+`fun ask(q: String)`, and a mic button that fills the field via PlatformAsr. Signature is
+`@Composable fun AskScreen(onBack: () -> Unit, onOpenRecord: (Long) -> Unit, vm: AskViewModel = viewModel())`.
+
+TASK: retype every one of these against `LlmBackend` / `BackendFactory`. Emit complete files for:
+
+1. `app/src/main/java/com/smriti/app/ai/Extractor.kt`
+   - constructor becomes `class Extractor(private val backend: LlmBackend? = null)`
+   - PRESERVE the lenient parser exactly: first-brace-to-last-brace slicing, ```json fence
+     stripping, trailing-comma removal, key aliases
+     (actions|actionItems|action_items|tasks|todos), arrays of plain strings where objects were
+     expected, inside-object aliases (text|task|action|item|description and
+     due|dueDate|due_date|date|deadline), title|heading|name, summary|note|description,
+     people|persons|names|assignees, tags|labels|topics, amounts|quantities|figures, title
+     derived from the summary's first sentence when absent, and return null when there is no
+     title, no summary and no actions.
+   - keep `internal fun repairJson` public-to-tests.
+   - still never throws.
+
+2. `app/src/main/java/com/smriti/app/capture/CapturePipeline.kt`
+   - use `BackendFactory.create(context).getOrNull()` and `Extractor(backend)`.
+   - PRESERVE everything else exactly: the CaptureStage flow (Photo, Reading, Listening,
+     Thinking, Done, Failed), concurrent OCR and ASR via coroutineScope/async, insertion of
+     RecordEntity with gson-encoded peopleJson/amountsJson/tagsJson, TaskEntity rows from
+     structured.actions, the `parseDue` ISO-8601-only helper, and the `titleFor` helper that
+     collapses whitespace, cuts on a word boundary at 60 chars and falls back to
+     "Untitled capture · HH:mm".
+
+3. `app/src/main/java/com/smriti/app/ai/Recall.kt`
+   - `class Recall(dao, backend: LlmBackend, embedder: Embedder?, converters: Converters)`
+   - preserve the keyword-scoring fallback when embedder is null or fewer than 3 records have
+     embeddings, the top-4 cosine path, the prompt built from numbered record blocks, and the
+     never-throw behaviour returning an explanatory RecallAnswer.
+
+4. `app/src/main/java/com/smriti/app/SelfTest.kt`
+   - use `BackendFactory.create(context)`; log `backend.label` instead of `engine.backend`.
+   - the `backend: String?` and `resetPolicy` params only make sense for the local flavor;
+     keep them in the signature but simply log them, and note in a comment that they are
+     honoured only by the offline flavor's BackendFactory.
+
+5. `app/src/main/java/com/smriti/app/ui/AskScreen.kt`
+   - AskViewModel builds Recall from `BackendFactory.create(...)`.
+   - PRESERVE the whole UI: text field with placeholder "What did I commit to this week?",
+     mic button using PlatformAsr, ASK button, "Thinking on this device" busy state, the answer
+     card, and the Evidence section showing evidencePhotoPath tappable to onOpenRecord.
+   - Do NOT use Coil/Glide; decode bitmaps with BitmapFactory + inSampleSize inside remember.
+
+Kotlin 2.0.21. Everything must compile. Do not invent members that were not listed above.

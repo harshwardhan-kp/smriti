@@ -1,0 +1,83 @@
+Output ONLY file contents. For each file emit a line `FILE: <relative/path>` with NO backticks around the path, followed immediately by one fenced code block containing the complete file. No prose anywhere.
+
+Android project `com.smriti.app`, Kotlin 2.0.21, AGP 8.13.2, Gradle 8.14, compileSdk 36,
+minSdk 26. Existing relevant code:
+
+```
+com.smriti.app.ai.LlmEngine
+    suspend fun generate(prompt: String, maxTokens: Int = 512): String
+    val backend: String
+com.smriti.app.ai.LlmHolder
+    suspend fun get(context: Context, forced: LlmInference.Backend? = null): Result<LlmEngine>
+com.smriti.app.ai.Extractor(private val engine: LlmEngine? = null)
+    suspend fun extract(ocrText: String, transcript: String): StructuredRecord
+com.smriti.app.ai.ModelMissingException(message: String)
+```
+
+GOAL. Introduce TWO product flavors so a developer can build a fast cloud-backed variant for
+iteration, while the shipping variant stays strictly on-device with no network permission.
+
+  flavor `offline`  (DEFAULT) - uses the existing on-device MediaPipe LlmEngine. No INTERNET.
+  flavor `devcloud`           - calls the Meta Messages API. Has INTERNET. Never shipped.
+
+WRITE THESE FILES:
+
+1. `app/src/main/java/com/smriti/app/ai/LlmBackend.kt`
+   - `interface LlmBackend { val label: String ; suspend fun generate(prompt: String, maxTokens: Int = 512): String ; fun close() {} }`
+   - Kdoc: the shipping build must always be `offline`; `devcloud` exists solely so prompt work
+     does not cost 12-60 s per iteration on a handset.
+
+2. `app/src/main/java/com/smriti/app/ai/LocalLlmBackend.kt`
+   - `class LocalLlmBackend(private val engine: LlmEngine) : LlmBackend`
+   - label delegates to `engine.backend`; generate delegates to `engine.generate`.
+
+3. `app/src/devcloud/java/com/smriti/app/ai/MuseBackend.kt`
+   - `class MuseBackend(private val apiKey: String, private val model: String = "muse-spark-1.2-contributor") : LlmBackend`
+   - POST to `https://api.meta.ai/v1/messages` using HttpURLConnection on Dispatchers.IO.
+     Headers: `x-api-key: <apiKey>`, `Content-Type: application/json`.
+     Body: {"model":<model>,"max_tokens":<maxTokens>,"messages":[{"role":"user","content":<prompt>}]}
+     Build the JSON with org.json.JSONObject, never string concatenation.
+   - CRITICAL RESPONSE SHAPE: the top-level `content` is a JSON ARRAY whose entries each have a
+     `type`. Entries may be `"redacted_thinking"` (ignore) or `"text"`. Concatenate the `text`
+     field of every entry whose type == "text". Returning content[0] gives an empty string.
+   - Retry 3 times with exponential backoff on HTTP 429/500/502/503/504 and on IOException.
+     Throw IllegalStateException with the status code and body on other errors.
+   - connectTimeout 15000, readTimeout 120000.
+   - label = "Muse Spark (cloud, dev only)".
+
+4. `app/src/offline/java/com/smriti/app/ai/BackendFactory.kt`
+   - `object BackendFactory { suspend fun create(context: Context): Result<LlmBackend> }`
+     returning `LlmHolder.get(context).map { LocalLlmBackend(it) }`.
+
+5. `app/src/devcloud/java/com/smriti/app/ai/BackendFactory.kt`
+   - Same signature. Returns `Result.success(MuseBackend(BuildConfig.MUSE_API_KEY))` when the
+     key is non-blank, otherwise `Result.failure(IllegalStateException(...))` with a message
+     telling the developer to put `museApiKey=...` in `local.properties`.
+
+6. `app/src/devcloud/AndroidManifest.xml`
+   - A manifest fragment adding ONLY `<uses-permission android:name="android.permission.INTERNET" />`.
+     Include an XML comment stating this flavor is for development iteration and must never be
+     released, and that the `offline` flavor is the shipping configuration.
+
+7. `app/build.gradle.kts` — emit the COMPLETE file, preserving everything already there
+   (namespace com.smriti.app, applicationId com.smriti.app, compileSdk 36, minSdk 26,
+   targetSdk 36, ndk abiFilters arm64-v8a, JVM 21, compose true, all existing dependencies
+   including mediapipe tasks-genai 0.10.35, tasks-text 0.10.35, camera, mlkit text-recognition
+   and text-recognition-devanagari, room with ksp, gson, navigation-compose, lifecycle,
+   material-icons-extended, junit) and ADDING:
+     - `buildFeatures { compose = true ; buildConfig = true }`
+     - `flavorDimensions += "llm"`
+     - productFlavors: `offline` (isDefault = true, applicationIdSuffix none) and
+       `devcloud` (applicationIdSuffix = ".devcloud", versionNameSuffix = "-devcloud")
+     - the devcloud flavor defines a BuildConfig field:
+         `buildConfigField("String", "MUSE_API_KEY", "\"${museKey}\"")`
+       where `museKey` is read at configuration time from `local.properties` key `museApiKey`,
+       defaulting to empty string when absent. Read it with java.util.Properties and
+       rootProject.file("local.properties"), guarded by exists().
+     - keep the existing `assertNoNetworkPermission` task, but change `afterEvaluate` so it is
+       wired ONLY to `assembleOfflineDebug` and `assembleOfflineRelease` — the devcloud flavor
+       is expected to have INTERNET and must not fail the guard.
+     - the forbidden-permission task must also only scan merged manifests whose path contains
+       "offline".
+
+Everything must compile. Kotlin 2.0.21, no new third-party dependencies.

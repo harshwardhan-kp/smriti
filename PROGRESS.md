@@ -196,3 +196,66 @@ and re-rendered.
   `SelfTest`, triggered by
   `adb shell am start -n com.smriti.app/.MainActivity --ez smriti_selftest true --es backend cpu`
 - `/data/local/tmp` is `drwxrwx--x`, so an app uid CAN traverse it and read a 0666 model there.
+
+### 2026-09-01 20:25 — flavor split: devcloud (Muse Spark) vs offline (on-device)
+
+The device loop was too slow to iterate on (12-60 s per generation), so the app now has two
+product flavors sharing one `LlmBackend` interface:
+
+| flavor | applicationId | model | INTERNET | network guard |
+|---|---|---|---|---|
+| `offline` (default, SHIPPING) | com.smriti.app | MediaPipe on-device | absent | armed |
+| `devcloud` (dev only) | com.smriti.app.devcloud | Muse Spark 1.2 via api.meta.ai | present | skipped |
+
+Different applicationIds, so both install side by side. Swapping back is
+`./gradlew assembleOfflineDebug` — no code change.
+
+Build commands:
+    ./gradlew assembleOfflineDebug     # ships; guard runs and must stay clean
+    ./gradlew assembleDevcloudDebug    # dev only
+APKs:
+    app/build/outputs/apk/offline/debug/app-offline-debug.apk
+    app/build/outputs/apk/devcloud/debug/app-devcloud-debug.apk
+
+Verified with `aapt2 dump permissions`: offline has CAMERA + RECORD_AUDIO only; devcloud adds
+INTERNET and nothing else.
+
+**Meta Messages API contract** (found by probing; the muse CLI wraps it):
+    POST https://api.meta.ai/v1/messages
+    x-api-key: <key>            (Authorization: Bearer also works)
+    {"model":"muse-spark-1.2-contributor","max_tokens":N,
+     "messages":[{"role":"user","content":"..."}]}
+Response `content` is an ARRAY mixing {"type":"redacted_thinking"} and {"type":"text"}.
+Concatenate the text entries; taking content[0] yields an empty string.
+
+**The trap that cost an hour, and would have cost far more unlogged:**
+Muse Spark is a thinking model and its reasoning tokens count against `max_tokens`.
+
+| max_tokens | stop_reason | thinking tokens | text returned |
+|---|---|---|---|
+| 512 | max_tokens | 509 | **0 chars** |
+| 4096 | end_turn | 800 | 175 chars |
+
+Our `generate()` default of 512 guaranteed an empty string, SILENTLY — the API returns 200 with
+an empty content array. MuseBackend now requests `maxOf(maxTokens * 4, 4096)` and logs a warning
+when the text is empty, naming stop_reason.
+
+**Measured, Moto G05, same prompt:**
+
+| stage | on-device Gemma 3 1B (Redmi) | devcloud Muse Spark |
+|---|---|---|
+| load | 8 084 ms | 7 ms |
+| generate | 12 217 ms | 4 754 ms |
+| extract | 21 858 ms | 5 750 ms |
+
+Output quality is also far better: correct title, a full summary, people, tags and both actions
+with `due=2026-09-04` — the right Friday. And the raw JSON came back as
+`{"action_items":[{"assignee":..,"task":..,"due":..}]}`, a THIRD key-alias variant we had not
+seen before. The lenient parser absorbed it with no retry.
+
+**Test devices**
+
+| device | SoC | RAM | notes |
+|---|---|---|---|
+| Redmi Note 10S | Helio G95, Mali-G76 | 5.7 GB | MIUI blocks first adb install and denies INJECT_EVENTS |
+| Moto G05 | Helio G81 (mt6768), Mali-G52 MC2 | 3.8 GB, **1.36 GB available** | near-stock A15: adb install and `pm grant` and `input tap` all work. Too little RAM for Gemma 1B; Qwen 0.5B only. |

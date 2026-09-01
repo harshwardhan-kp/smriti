@@ -16,7 +16,7 @@ data class RecallAnswer(
 
 class Recall(
     private val dao: RecordDao,
-    private val engine: LlmEngine,
+    private val backend: LlmBackend,
     private val embedder: Embedder?,
     private val converters: Converters
 ) {
@@ -88,7 +88,7 @@ class Recall(
 
             val primaryRecord = selectedRecords.first()
             val prompt = buildPrompt(selectedRecords, question)
-            val generatedAnswer = engine.generate(prompt)
+            val generatedAnswer = backend.generate(prompt)
 
             RecallAnswer(
                 answer = generatedAnswer.trim(),

@@ -1,8 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+}
+
+val museKey = run {
+    val props = Properties()
+    val localProps = rootProject.file("local.properties")
+    if (localProps.exists()) {
+        localProps.inputStream().use { props.load(it) }
+        props.getProperty("museApiKey", "")?.trim() ?: ""
+    } else {
+        ""
+    }
 }
 
 android {
@@ -20,6 +33,18 @@ android {
 
         ndk {
             abiFilters += "arm64-v8a"
+        }
+    }
+
+    flavorDimensions += "llm"
+    productFlavors {
+        create("offline") {
+            isDefault = true
+        }
+        create("devcloud") {
+            applicationIdSuffix = ".devcloud"
+            versionNameSuffix = "-devcloud"
+            buildConfigField("String", "MUSE_API_KEY", "\"${museKey}\"")
         }
     }
 
@@ -41,6 +66,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -108,10 +134,11 @@ tasks.register("assertNoNetworkPermission") {
     group = "verification"
     description = "Fails if a network permission survives manifest merging."
     doLast {
-        val manifests = fileTree(layout.buildDirectory.dir("intermediates")) {
+        val allManifests = fileTree(layout.buildDirectory.dir("intermediates")) {
             include("**/merged_manifest*/**/AndroidManifest.xml")
             include("**/packaged_manifests/**/AndroidManifest.xml")
         }.files
+        val manifests = allManifests.filter { it.path.contains("offline") }
         require(manifests.isNotEmpty()) { "No merged manifest found - run a build first." }
 
         val offenders = mutableListOf<String>()
@@ -136,6 +163,6 @@ tasks.register("assertNoNetworkPermission") {
 }
 
 afterEvaluate {
-    tasks.named("assembleDebug") { finalizedBy("assertNoNetworkPermission") }
-    tasks.findByName("assembleRelease")?.finalizedBy("assertNoNetworkPermission")
+    tasks.named("assembleOfflineDebug") { finalizedBy("assertNoNetworkPermission") }
+    tasks.findByName("assembleOfflineRelease")?.finalizedBy("assertNoNetworkPermission")
 }
