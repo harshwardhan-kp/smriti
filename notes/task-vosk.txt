@@ -1,0 +1,85 @@
+Output ONLY file contents. For each file emit `FILE: <relative/path>` with NO backticks, then one fenced code block with the COMPLETE file. No prose.
+
+Android, Kotlin 2.0.21, minSdk 26, package com.smriti.app. Product flavors `offline` and `devcloud`.
+
+Existing, use exactly:
+```
+package com.smriti.app.capture
+interface Asr { suspend fun transcribe(maxMillis: Long = 15_000): String ; fun cancel() }
+interface PushToTalk { fun stopListening() }
+class PlatformAsr(context: Context) : Asr           // Android SpeechRecognizer
+class AsrUnavailableException(message: String) : Exception(message)
+class AudioRecorder(context: Context) { fun start() ; fun stop(): java.io.File? ; fun cancel() ; val isRecording: Boolean }
+```
+`AudioRecorder` produces a 16 kHz mono 16-bit PCM WAV file with a correct 44-byte header.
+
+WHY: measured on a Moto G05, stock Android 15, 2026-09-01 — the platform recogniser fails with
+LANGUAGE_PACK_ERROR (code 13) because no offline speech language pack is installed. The offline
+flavor therefore has NO working speech at all. Vosk gives fully offline recognition as a plain
+Maven dependency, with no NDK build.
+
+Vosk is `com.alphacephei:vosk-android:0.3.75` on Maven Central. Its API:
+```
+org.vosk.Model(modelDirPath: String)
+org.vosk.Recognizer(model: Model, sampleRateHz: Float)
+recognizer.acceptWaveForm(bytes: ByteArray, len: Int): Boolean
+recognizer.getResult(): String        // JSON {"text":"..."}
+recognizer.getPartialResult(): String // JSON {"partial":"..."}
+recognizer.getFinalResult(): String   // JSON {"text":"..."}
+model.close() ; recognizer.close()
+org.vosk.LibVosk.setLogLevel(org.vosk.LogLevel.WARNINGS)
+```
+
+WRITE THESE FILES:
+
+1. `app/src/main/java/com/smriti/app/capture/VoskModelProvisioner.kt`
+   - `object VoskModelProvisioner`
+   - `fun locate(context: Context): java.io.File?` — returns the first EXISTING DIRECTORY among:
+       File(context.filesDir, "vosk/model")
+       File("/data/local/tmp/vosk/model")
+       File("/data/local/tmp/vosk/vosk-model-small-en-us-0.15")
+       File("/data/local/tmp/vosk/vosk-model-small-hi-0.22")
+     A valid Vosk model directory contains a subdirectory named "am" OR a file named
+     "conf/model.conf" — verify one of those before accepting it, so a half-extracted directory
+     is rejected rather than crashing the native layer.
+   - `fun missingMessage(): String` — names the searched paths and gives the adb commands:
+       adb shell mkdir -p /data/local/tmp/vosk
+       adb push vosk-model-small-en-us-0.15 /data/local/tmp/vosk/model
+     and notes the models come from https://alphacephei.com/vosk/models (small en-us is ~41 MB
+     zipped, small hi is ~44 MB).
+
+2. `app/src/offline/java/com/smriti/app/capture/VoskAsr.kt`
+   - `class VoskAsr(private val context: Context) : Asr, PushToTalk`
+   - Loads the model lazily on first use, ONCE, from VoskModelProvisioner.locate(). Loading is
+     slow, so hold it in a companion-level @Volatile field guarded by a Mutex, and never reload.
+   - If no model directory is found, transcribe() throws
+     AsrUnavailableException(VoskModelProvisioner.missingMessage()).
+   - `transcribe(maxMillis)` on Dispatchers.IO:
+       start an AudioRecorder, wait for stopListening() or maxMillis (CompletableDeferred +
+       withTimeoutOrNull), stop the recorder, then feed the WAV to a Recognizer:
+         skip the first 44 header bytes, then read in 4096-byte chunks calling acceptWaveForm,
+         finally read getFinalResult() and parse the "text" field with org.json.JSONObject.
+       Return the trimmed text. Delete the wav in a finally. Close the Recognizer (NOT the Model).
+   - `stopListening()` completes the deferred. `cancel()` cancels the recorder and completes it.
+   - Call LibVosk.setLogLevel(LogLevel.WARNINGS) once, guarded, before creating the Model.
+   - Everything wrapped so a failure throws AsrUnavailableException with a readable message.
+
+3. `app/src/offline/java/com/smriti/app/capture/AsrFactory.kt` — COMPLETE replacement.
+   `object AsrFactory { fun create(context: Context): Asr }`
+   - Returns VoskAsr(context) when VoskModelProvisioner.locate(context) != null.
+   - Otherwise returns PlatformAsr(context) as a fallback, with a Kdoc explaining that the
+     platform recogniser is known to fail with LANGUAGE_PACK_ERROR on devices without an offline
+     language pack, so Vosk is preferred whenever a model is present.
+
+4. `app/build.gradle.kts` — COMPLETE file, identical to the current one except adding
+   `implementation("com.alphacephei:vosk-android:0.3.75")` to the dependencies block, placed
+   next to the other on-device AI dependencies with a comment saying it provides fully offline
+   speech recognition and requires no NDK build. Preserve EVERYTHING else exactly: the
+   `import java.util.Properties` at the top, the museKey and groqKey blocks, flavorDimensions
+   "llm", the offline and devcloud product flavors with their buildConfigFields
+   (MUSE_API_KEY, GROQ_API_KEY), ndk abiFilters arm64-v8a, compileSdk 36, minSdk 26,
+   targetSdk 36, JVM 21, buildFeatures compose + buildConfig, the assertNoNetworkPermission
+   task and its afterEvaluate wiring to the offline variants only, and every existing
+   dependency.
+
+Kotlin 2.0.21. Must compile.

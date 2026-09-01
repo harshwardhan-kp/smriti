@@ -355,3 +355,40 @@ rows: it counts first, deletes tasks before records, and no user input reaches t
 
 Both flavors build; 74 MB debug APKs (the embedder asset plus material-icons-extended, both of
 which R8 will shrink in release).
+
+### 2026-09-01 21:50 — offline speech fixed with Vosk, not whisper.cpp
+
+The offline flavor had NO working speech at all: Android's recogniser fails with
+LANGUAGE_PACK_ERROR on devices with no offline pack, which was both test phones. whisper.cpp was
+the planned answer but needs an NDK build, a JNI wrapper and a 148 MB model — days of work for a
+30-hour event.
+
+**Vosk is a plain Maven dependency.** `com.alphacephei:vosk-android:0.3.75` on Maven Central, no
+NDK build, no JNI to write. Models from alphacephei.com:
+
+| model | zipped | extracted |
+|---|---|---|
+| vosk-model-small-en-us-0.15 | 41 MB | 68 MB |
+| vosk-model-small-hi-0.22 | 44 MB | 78 MB |
+
+Both downloaded to `~/Claude/iqoo-hackathon/models/`. `VoskAsr` loads the model once per process
+(loading is slow), feeds it the WAV from `AudioRecorder` in 4096-byte chunks past the 44-byte
+header, and reads `getFinalResult()`. `AsrFactory` (offline) prefers Vosk when a model directory
+is present and falls back to `PlatformAsr` otherwise.
+
+`VoskModelProvisioner` validates a candidate directory by checking for an `am/` subdirectory or
+`conf/model.conf` before handing it to the native layer — a half-extracted directory would
+otherwise crash it rather than fail cleanly.
+
+Two compile fixes: `AsrUnavailableException`'s second positional parameter is `errorCode: Int?`,
+so the worker's `AsrUnavailableException(msg, e)` bound the cause to the wrong slot. Named
+`cause = e` at both call sites.
+
+`scripts/push-models.sh` in the hackathon repo now provisions both models and picks the language
+model by the device's available memory: under ~1.8 GB it pushes Qwen 0.5B rather than Gemma 1B.
+
+**State: 24 unit tests green, lint clean (0 errors), both flavors build, permissions audited.**
+
+Still untested on hardware, because the device was disconnected: AudioRecord against a real mic,
+Vosk recognition, the Groq round trip from the phone, and the back-button fix. Everything else
+has been verified either on device earlier today or on the laptop.

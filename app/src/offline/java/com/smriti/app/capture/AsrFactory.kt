@@ -5,13 +5,23 @@ import android.content.Context
 /**
  * Offline flavor ASR factory.
  *
- * Measured 2026-09-01 on Moto G05 (stock Android 15): [PlatformAsr] fails with
- * `LANGUAGE_PACK_ERROR` / error code 13 — "Failed to get language pack of required locale" —
- * when no offline speech language pack is installed. Voice input is dead in that state.
+ * Prefers [VoskAsr] when a Vosk model is present on-device; falls back to
+ * [PlatformAsr] otherwise.
  *
- * The intended shipping replacement is whisper.cpp — a fully offline, on-device Whisper
- * implementation — which will replace [PlatformAsr] behind this same factory.
+ * The platform recogniser (Android SpeechRecognizer) is known to fail with
+ * LANGUAGE_PACK_ERROR (code 13) on devices without an offline speech language
+ * pack installed — measured 2026-09-01 on Moto G05, stock Android 15: the
+ * recogniser returns error 13 "Failed to get language pack of required locale"
+ * and voice input is dead in that state. Vosk is therefore preferred whenever
+ * a model is present because it provides fully offline recognition with no
+ * language-pack dependency.
  */
 object AsrFactory {
-    fun create(context: Context): Asr = PlatformAsr(context)
+    fun create(context: Context): Asr {
+        return if (VoskModelProvisioner.locate(context) != null) {
+            VoskAsr(context)
+        } else {
+            PlatformAsr(context)
+        }
+    }
 }

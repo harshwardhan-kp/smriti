@@ -126,6 +126,9 @@ dependencies {
     // On-device text embeddings for offline recall (brute-force cosine, no vector DB).
     implementation("com.google.mediapipe:tasks-text:0.10.35")
 
+    // Vosk provides fully offline speech recognition and requires no NDK build.
+    implementation("com.alphacephei:vosk-android:0.3.75")
+
     testImplementation("junit:junit:4.13.2")
 }
 
