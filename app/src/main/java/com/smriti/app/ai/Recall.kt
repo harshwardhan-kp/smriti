@@ -3,6 +3,7 @@ package com.smriti.app.ai
 import com.smriti.app.data.Converters
 import com.smriti.app.data.RecordDao
 import com.smriti.app.data.RecordEntity
+import com.smriti.app.data.TaskEntity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -87,7 +88,12 @@ class Recall(
             }
 
             val primaryRecord = selectedRecords.first()
-            val prompt = buildPrompt(selectedRecords, question)
+            // Commitments live in the tasks table, not in the record text. A question like
+            // "what did I commit to this week?" is literally a question about tasks, and
+            // answering it from record prose alone made the model say the information was not
+            // present while eight dated commitments sat in the database. Observed on device.
+            val openTasks = try { dao.openTasks() } catch (_: Throwable) { emptyList() }
+            val prompt = buildPrompt(selectedRecords, openTasks, question)
             val generatedAnswer = backend.generate(prompt)
 
             RecallAnswer(
@@ -144,7 +150,11 @@ class Recall(
         }
     }
 
-    private fun buildPrompt(records: List<RecordEntity>, question: String): String {
+    private fun buildPrompt(
+        records: List<RecordEntity>,
+        openTasks: List<TaskEntity>,
+        question: String
+    ): String {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
 
         val recordBlocks = records.mapIndexed { index, record ->
@@ -168,9 +178,31 @@ class Recall(
             """.trimIndent()
         }.joinToString("\n\n")
 
+        val today = dateFormat.format(Date()).substring(0, 10)
+
+        val taskBlock = if (openTasks.isEmpty()) {
+            "(no open commitments)"
+        } else {
+            openTasks.joinToString("\n") { task ->
+                val due = task.dueDateMillis
+                    ?.let { dateFormat.format(Date(it)).substring(0, 10) }
+                    ?: "no date"
+                "- ${task.text} (due: $due)"
+            }
+        }
+
         return """
-            You are Smriti, an offline personal memory assistant. Answer the user's question using ONLY the provided records below.
-            Answer in at most three sentences. If the records do not contain the answer, say plainly that the information is not present in the records. Do not make up facts or extrapolate beyond what is stated.
+            You are Smriti, an offline personal memory assistant. Today is $today.
+            Answer the user's question using ONLY the records and open commitments below.
+            Answer in at most three sentences. If they do not contain the answer, say plainly
+            that the information is not present. Do not make up facts.
+
+            When the question is about commitments, promises, deadlines or what is due, answer
+            from OPEN COMMITMENTS. That list is the authoritative record of what was committed
+            to; the records are the context those commitments came from.
+
+            OPEN COMMITMENTS:
+            $taskBlock
 
             RECORDS:
             $recordBlocks

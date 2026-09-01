@@ -35,6 +35,9 @@ interface RecordDao {
     @Query("SELECT COUNT(*) FROM records")
     suspend fun countRecords(): Int
 
+    @Query("SELECT * FROM tasks WHERE done = 0 ORDER BY dueDateMillis IS NULL ASC, dueDateMillis ASC")
+    suspend fun openTasks(): List<TaskEntity>
+
     @Query("SELECT * FROM records WHERE embedding IS NULL ORDER BY createdAt DESC")
     suspend fun recordsMissingEmbedding(): List<RecordEntity>
 

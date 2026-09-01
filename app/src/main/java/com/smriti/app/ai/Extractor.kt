@@ -14,6 +14,14 @@ class Extractor(private val backend: LlmBackend? = null) {
     private val gson = Gson()
 
     suspend fun extract(ocrText: String, transcript: String): StructuredRecord {
+        // Nothing to extract. Asking a language model to summarise the absence of input
+        // makes it comment on that absence, and the comment then becomes the record's title:
+        // three records on the test device were titled "Empty Transcript Provided". Skip the
+        // call entirely — it is also several seconds saved on a capture that has no content.
+        if (ocrText.isBlank() && transcript.isBlank()) {
+            return StructuredRecord.fallback("")
+        }
+
         val fallbackText = transcript.ifBlank { ocrText }
         val activeBackend = backend ?: return StructuredRecord.fallback(fallbackText)
 
