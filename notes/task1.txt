@@ -1,0 +1,86 @@
+Do NOT use tools and do NOT try to read files. Output ONLY file contents. For each file emit a line `FILE: <relative/path>` followed immediately by one fenced code block containing the complete file. No prose, no commentary, no explanation before, between, or after.
+
+You are writing the skeleton of an Android app called Smriti. It is an offline camera-and-voice
+work log. Everything runs on the device. Kotlin + Jetpack Compose + Room.
+
+EXACT BUILD ENVIRONMENT (do not deviate, these are verified working):
+- Kotlin DSL Gradle, AGP 8.13.2, Gradle 8.14, Kotlin 2.0.21
+- compileSdk 36, minSdk 26, targetSdk 36, JDK 21 toolchain, jvmTarget 21
+- Compose BOM 2024.09.03
+- Room via KSP (com.google.devtools.ksp version 2.0.21-1.0.25), NOT kapt
+- applicationId and namespace: com.smriti.app
+- defaultConfig must include: ndk { abiFilters += "arm64-v8a" }
+- gradle.properties: org.gradle.jvmargs=-Xmx1536m, org.gradle.daemon=true,
+  android.useAndroidX=true, org.gradle.configuration-cache=false
+
+CRITICAL MANIFEST RULE: the app must declare NO internet permission. Do not add
+android.permission.INTERNET under any circumstances. Declare only CAMERA and RECORD_AUDIO.
+Add <uses-feature android:name="android.hardware.camera.any" />.
+
+DEPENDENCIES to include (use these exact artifacts; pick current stable versions):
+androidx.core:core-ktx, androidx.lifecycle:lifecycle-runtime-ktx,
+androidx.activity:activity-compose, compose ui/ui-graphics/ui-tooling-preview/material3,
+androidx.navigation:navigation-compose, androidx.room:room-runtime, androidx.room:room-ktx,
+ksp("androidx.room:room-compiler"), org.jetbrains.kotlinx:kotlinx-coroutines-android,
+com.google.mediapipe:tasks-genai:0.10.35,
+androidx.camera:camera-core/camera-camera2/camera-lifecycle/camera-view,
+com.google.mlkit:text-recognition, com.google.mlkit:text-recognition-devanagari,
+com.google.code.gson:gson
+
+WRITE THESE FILES, COMPLETE AND MUTUALLY CONSISTENT:
+
+1. settings.gradle.kts — pluginManagement + dependencyResolutionManagement with google(),
+   mavenCentral(), gradlePluginPortal(). rootProject.name = "Smriti". include(":app")
+2. build.gradle.kts (root) — plugins block declaring android application, kotlin android,
+   kotlin compose plugin, and ksp, all `apply false`
+3. gradle.properties
+4. app/build.gradle.kts
+5. app/proguard-rules.pro (may be a one-line comment)
+6. app/src/main/AndroidManifest.xml
+7. app/src/main/res/values/themes.xml — Material3, no action bar
+8. app/src/main/res/values/strings.xml — app_name "Smriti"
+9. app/src/main/java/com/smriti/app/ui/theme/Theme.kt — Compose Material3 theme named
+   SmritiTheme. Palette: ink #0B0B0B, cream #FBF8F1, amber #F2B705. Support light and dark.
+10. app/src/main/java/com/smriti/app/data/RecordEntity.kt
+11. app/src/main/java/com/smriti/app/data/TaskEntity.kt
+12. app/src/main/java/com/smriti/app/data/Converters.kt
+13. app/src/main/java/com/smriti/app/data/RecordDao.kt
+14. app/src/main/java/com/smriti/app/data/SmritiDb.kt
+15. app/src/main/java/com/smriti/app/MainActivity.kt
+
+ENTITY SCHEMA — use exactly these fields and types:
+
+RecordEntity: id Long PK autoGenerate, createdAt Long, photoPath String, ocrText String,
+transcript String, title String, summary String, peopleJson String, amountsJson String,
+tagsJson String, embedding ByteArray? .
+Because it holds a ByteArray you MUST override equals() and hashCode() correctly, or Room
+emits a warning and the data class behaves wrongly on comparison.
+
+TaskEntity: id Long PK autoGenerate, recordId Long, text String, dueDateMillis Long?,
+done Boolean default false. Index on recordId.
+
+RecordDao must expose, all suspend or Flow:
+- Flow<List<RecordEntity>> observeRecords() ordered createdAt DESC
+- suspend insertRecord(RecordEntity): Long
+- suspend insertTasks(List<TaskEntity>)
+- suspend getRecord(id: Long): RecordEntity?
+- Flow<List<TaskEntity>> observeTasks() ordered dueDateMillis ASC nulls last
+- Flow<List<TaskEntity>> observeTasksForRecord(recordId: Long)
+- suspend setTaskDone(id: Long, done: Boolean)
+- suspend allRecordsWithEmbedding(): List<RecordEntity>   // for brute-force cosine recall
+- suspend countRecords(): Int
+
+SmritiDb: @Database version 1, exportSchema false, entities RecordEntity + TaskEntity,
+@TypeConverters(Converters::class), singleton `get(context)` using a synchronized companion.
+
+Converters: FloatArray? <-> ByteArray? using little-endian float32 via java.nio.ByteBuffer.
+
+MainActivity: ComponentActivity, enableEdgeToEdge, setContent { SmritiTheme { SmritiApp() } }.
+SmritiApp is a @Composable in MainActivity.kt holding a NavHost with routes "capture",
+"timeline", "detail/{id}", "ask". Include a runtime permission gate composable that requests
+CAMERA and RECORD_AUDIO with rememberLauncherForActivityResult and shows a short explanatory
+screen until both are granted. For now each of the four routes may render a placeholder
+Composable with just its name in a Text — the real screens land in a later task — but the nav
+graph, the arguments, and the permission gate must be complete and correct.
+
+The whole thing must compile with zero errors. Prefer boring, obviously-correct code.
