@@ -1,0 +1,39 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.14/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preOfflineDebugBuild UP-TO-DATE
+> Task :app:generateOfflineDebugBuildConfig UP-TO-DATE
+> Task :app:checkOfflineDebugAarMetadata UP-TO-DATE
+> Task :app:processOfflineDebugNavigationResources UP-TO-DATE
+> Task :app:compileOfflineDebugNavigationResources UP-TO-DATE
+> Task :app:generateOfflineDebugResValues UP-TO-DATE
+> Task :app:mapOfflineDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateOfflineDebugResources UP-TO-DATE
+> Task :app:mergeOfflineDebugResources UP-TO-DATE
+> Task :app:packageOfflineDebugResources UP-TO-DATE
+> Task :app:parseOfflineDebugLocalResources UP-TO-DATE
+> Task :app:createOfflineDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksOfflineDebug UP-TO-DATE
+> Task :app:processOfflineDebugMainManifest UP-TO-DATE
+> Task :app:processOfflineDebugManifest UP-TO-DATE
+> Task :app:processOfflineDebugManifestForPackage UP-TO-DATE
+> Task :app:processOfflineDebugResources UP-TO-DATE
+> Task :app:javaPreCompileOfflineDebug UP-TO-DATE
+> Task :app:preOfflineDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileOfflineDebugUnitTest UP-TO-DATE
+> Task :app:kspOfflineDebugKotlin
+> Task :app:compileOfflineDebugKotlin
+> Task :app:compileOfflineDebugJavaWithJavac UP-TO-DATE
+> Task :app:processOfflineDebugJavaRes UP-TO-DATE
+> Task :app:bundleOfflineDebugClassesToCompileJar
+> Task :app:bundleOfflineDebugClassesToRuntimeJar
+> Task :app:kspOfflineDebugUnitTestKotlin
+> Task :app:compileOfflineDebugUnitTestKotlin
+> Task :app:compileOfflineDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processOfflineDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:testOfflineDebugUnitTest
+
+BUILD SUCCESSFUL in 16s
+28 actionable tasks: 7 executed, 21 up-to-date
