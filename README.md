@@ -5,12 +5,12 @@ Nothing ever leaves the device.**
 
 <div align="center">
 
-### ▶ [Watch the 2-minute demo](https://youtu.be/I66cuY9YyFk)
+<img src="docs/demo.gif" width="280" alt="Smriti on a Moto G05: capture, structured extraction, timeline, and spoken recall with photo evidence">
 
-[<img src="docs/demo-poster.jpg" width="300" alt="Smriti running on a Moto G05 — camera live, OFFLINE / ON-DEVICE badge visible">](https://youtu.be/I66cuY9YyFk)
+**[▶ Watch with audio and controls (2 min)](https://youtu.be/I66cuY9YyFk)**
 
-*Capture, structured extraction, timeline, and spoken recall with photo evidence —
-running on a Moto G05.*
+*Capture → on-device understanding → timeline → ask out loud → answer with photo evidence.
+Recorded on a Moto G05. The clip above runs at 3× speed.*
 
 </div>
 
