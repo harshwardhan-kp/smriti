@@ -177,7 +177,11 @@ fun TimelineScreen(
                         }
                     }
 
-                    items(openTasks, key = { it.id }) { task ->
+                    // Keys must be unique across the WHOLE LazyColumn, not per items() block. Tasks and
+                    // records are separate tables with their own autoincrement ids, so task 1 and
+                    // record 1 collided and Compose threw IllegalArgumentException("Key \"1\" was
+                    // already used") on the first scroll that measured both sections.
+                    items(openTasks, key = { "task-${it.id}" }) { task ->
                         TaskRow(
                             task = task,
                             onToggle = { done -> vm.toggleTask(task.id, done) }
@@ -205,7 +209,7 @@ fun TimelineScreen(
                         }
                     }
 
-                    items(records, key = { it.id }) { record ->
+                    items(records, key = { "record-${it.id}" }) { record ->
                         RecordCard(
                             record = record,
                             onClick = { onOpenRecord(record.id) }
