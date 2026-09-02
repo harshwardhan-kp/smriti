@@ -14,6 +14,25 @@ Recorded on a Moto G05. The clip above runs at 3× speed.*
 
 </div>
 
+## Install it
+
+| Build | What it is | Download |
+|---|---|---|
+| **offline** | The shipping configuration. Models on the handset, **no `INTERNET` permission**. Needs two model files pushed. | [v0.1.0-offline](https://github.com/harshwardhan-kp/smriti/releases/tag/v0.1.0-offline) |
+| **devcloud** | Same app, cloud models, ~5 s instead of 12–60 s per generation. Development only. | [v0.1.0-devcloud](https://github.com/harshwardhan-kp/smriti/releases/tag/v0.1.0-devcloud) |
+
+```bash
+adb install -r smriti-offline-v0.1.0.apk
+adb shell am start -n com.smriti.app/.MainActivity --ez smriti_seed true
+```
+
+Both install side by side — different applicationIds. Neither APK contains an API key: a key
+compiled into a shared binary is recoverable from `classes.dex` in seconds, so distribution
+builds use `-PdistributionBuild=true` and devcloud reads credentials at runtime. Each release
+page has the exact commands.
+
+---
+
 An offline camera-and-voice work log for people whose work does not happen at a desk — site
 engineers, shop owners, lab technicians, field staff. You never type. Press once: the camera
 captures the artefact in front of you and you say one line about it. On-device OCR reads the

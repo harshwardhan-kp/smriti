@@ -392,3 +392,42 @@ model by the device's available memory: under ~1.8 GB it pushes Qwen 0.5B rather
 Still untested on hardware, because the device was disconnected: AudioRecord against a real mic,
 Vosk recognition, the Groq round trip from the phone, and the back-button fix. Everything else
 has been verified either on device earlier today or on the laptop.
+
+### 2026-09-02 02:50 — flavor parity, credential leak closed, two releases published
+
+**The offline timeline crash was a stale APK, not a missing fix.** `TimelineScreen.kt` lives in
+`main` and is shared by both flavors; the namespaced LazyColumn keys were already in it. The
+offline APK on the device had been built at ~21:5x, before the 22:13 fix commit. Confirmed by
+decompressing `classes*.dex` from both distribution APKs and finding the `task-` and `record-`
+string literals in each.
+
+**One genuine asymmetry existed and is fixed.** `GroqWhisperAsr` and `VoskAsr` both implemented
+`PushToTalk`; `PlatformAsr` did not. On the offline flavor's fallback path — a device with no
+Vosk model — releasing the shutter therefore did nothing, and the user waited on
+SpeechRecognizer's own end-of-speech detection instead of getting an immediate result. That is
+the same defect fixed for the Groq path earlier, still live on one branch. `PlatformAsr` now
+implements `PushToTalk` and calls `stopListening()` (not `cancel()`, which would discard audio).
+
+Otherwise the flavors are structurally identical: 36 shared source files, and only the two
+intended seams differ — `BackendFactory` and `AsrFactory`, plus their implementations.
+
+**The devcloud APK was leaking both API keys.** A raw `grep` of the `.apk` finds nothing, which
+is misleading — the dex is deflated inside the zip. Decompress `classes*.dex` and both the Groq
+and Muse keys are plainly present as `BuildConfig` string constants. Publishing that as a release
+asset would have published the credentials.
+
+`RuntimeKeys` (devcloud source set) now resolves keys in order: `BuildConfig` →
+`/data/local/tmp/smriti-keys.properties` → app-private storage. `-PdistributionBuild=true` blanks
+the compiled-in fields. Re-verified against the built artefacts: **zero key hits in either
+distribution APK.**
+
+**Releases published** (private repo — assets need GitHub access to download):
+- `v0.1.0-offline` — smriti-offline-v0.1.0.apk, 83 MB
+- `v0.1.0-devcloud` — smriti-devcloud-v0.1.0.apk, 83 MB
+
+Both debug-signed, which is what makes them installable without a keystore.
+
+**Not verified on hardware.** The device was disconnected for all of the above. The timeline fix
+is confirmed present in both binaries by dex inspection, and everything builds with 24 tests
+green and lint clean — but `PlatformAsr.stopListening()` and the runtime-key path have not been
+exercised on a phone. Plug in and run `./scripts/verify-on-device.sh offline`.
