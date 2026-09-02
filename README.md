@@ -26,10 +26,13 @@ adb install -r smriti-offline-v0.1.0.apk
 adb shell am start -n com.smriti.app/.MainActivity --ez smriti_seed true
 ```
 
-Both install side by side — different applicationIds. Neither APK contains an API key: a key
-compiled into a shared binary is recoverable from `classes.dex` in seconds, so distribution
-builds use `-PdistributionBuild=true` and devcloud reads credentials at runtime. Each release
-page has the exact commands.
+Both install side by side — different applicationIds. No sign-in needed; this repo is public
+and the assets download anonymously.
+
+**Neither APK contains an API key.** A key compiled into a shared binary is recoverable from
+`classes.dex` in seconds — verified on our own build before it shipped — so distribution builds
+use `-PdistributionBuild=true`, which blanks the `BuildConfig` fields, and the devcloud flavor
+reads credentials at runtime instead. Each release page has the exact commands.
 
 ---
 

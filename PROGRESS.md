@@ -421,7 +421,16 @@ asset would have published the credentials.
 the compiled-in fields. Re-verified against the built artefacts: **zero key hits in either
 distribution APK.**
 
-**Releases published** (private repo — assets need GitHub access to download):
+**Releases published.** The repo is **PUBLIC** (changed by the user on the morning of 2 Sep;
+an earlier note in this log calling it private is stale). Release assets are therefore
+anonymously downloadable — verified with an unauthenticated request returning HTTP 200.
+
+That makes the credential fix immediately above load-bearing rather than merely tidy: publishing
+the pre-fix devcloud APK would have put both API keys on a world-readable URL. Audited after
+publishing — git history contains 0 commits touching either key, `local.properties` was never
+tracked, and both published APK assets scan clean (0 hits for either key in `classes*.dex`).
+
+Assets:
 - `v0.1.0-offline` — smriti-offline-v0.1.0.apk, 83 MB
 - `v0.1.0-devcloud` — smriti-devcloud-v0.1.0.apk, 83 MB
 
