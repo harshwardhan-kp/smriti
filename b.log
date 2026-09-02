@@ -1,0 +1,102 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.14/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDevcloudDebugBuild UP-TO-DATE
+> Task :app:mergeDevcloudDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateDevcloudDebugBuildConfig UP-TO-DATE
+> Task :app:checkDevcloudDebugAarMetadata UP-TO-DATE
+> Task :app:processDevcloudDebugNavigationResources UP-TO-DATE
+> Task :app:compileDevcloudDebugNavigationResources UP-TO-DATE
+> Task :app:generateDevcloudDebugResValues UP-TO-DATE
+> Task :app:mapDevcloudDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDevcloudDebugResources UP-TO-DATE
+> Task :app:mergeDevcloudDebugResources UP-TO-DATE
+> Task :app:packageDevcloudDebugResources UP-TO-DATE
+> Task :app:parseDevcloudDebugLocalResources UP-TO-DATE
+> Task :app:createDevcloudDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDevcloudDebug UP-TO-DATE
+> Task :app:processDevcloudDebugMainManifest UP-TO-DATE
+> Task :app:processDevcloudDebugManifest UP-TO-DATE
+> Task :app:processDevcloudDebugManifestForPackage UP-TO-DATE
+> Task :app:processDevcloudDebugResources UP-TO-DATE
+> Task :app:javaPreCompileDevcloudDebug UP-TO-DATE
+> Task :app:mergeDevcloudDebugShaders UP-TO-DATE
+> Task :app:compileDevcloudDebugShaders NO-SOURCE
+> Task :app:generateDevcloudDebugAssets UP-TO-DATE
+> Task :app:mergeDevcloudDebugAssets UP-TO-DATE
+> Task :app:compressDevcloudDebugAssets UP-TO-DATE
+> Task :app:desugarDevcloudDebugFileDependencies UP-TO-DATE
+> Task :app:checkDevcloudDebugDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexDevcloudDebug UP-TO-DATE
+> Task :app:mergeLibDexDevcloudDebug UP-TO-DATE
+> Task :app:mergeDevcloudDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeDevcloudDebugNativeLibs UP-TO-DATE
+> Task :app:stripDevcloudDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDevcloudDebug UP-TO-DATE
+> Task :app:writeDevcloudDebugAppMetadata UP-TO-DATE
+> Task :app:writeDevcloudDebugSigningConfigVersions UP-TO-DATE
+> Task :app:preOfflineDebugBuild UP-TO-DATE
+> Task :app:mergeOfflineDebugNativeDebugMetadata NO-SOURCE
+> Task :app:generateOfflineDebugBuildConfig UP-TO-DATE
+> Task :app:checkOfflineDebugAarMetadata UP-TO-DATE
+> Task :app:processOfflineDebugNavigationResources UP-TO-DATE
+> Task :app:compileOfflineDebugNavigationResources UP-TO-DATE
+> Task :app:generateOfflineDebugResValues UP-TO-DATE
+> Task :app:mapOfflineDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateOfflineDebugResources UP-TO-DATE
+> Task :app:mergeOfflineDebugResources UP-TO-DATE
+> Task :app:packageOfflineDebugResources UP-TO-DATE
+> Task :app:parseOfflineDebugLocalResources UP-TO-DATE
+> Task :app:createOfflineDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksOfflineDebug UP-TO-DATE
+> Task :app:processOfflineDebugMainManifest UP-TO-DATE
+> Task :app:processOfflineDebugManifest UP-TO-DATE
+> Task :app:processOfflineDebugManifestForPackage UP-TO-DATE
+> Task :app:processOfflineDebugResources UP-TO-DATE
+> Task :app:kspOfflineDebugKotlin UP-TO-DATE
+> Task :app:compileOfflineDebugKotlin UP-TO-DATE
+> Task :app:javaPreCompileOfflineDebug UP-TO-DATE
+> Task :app:compileOfflineDebugJavaWithJavac UP-TO-DATE
+> Task :app:mergeOfflineDebugShaders UP-TO-DATE
+> Task :app:compileOfflineDebugShaders NO-SOURCE
+> Task :app:generateOfflineDebugAssets UP-TO-DATE
+> Task :app:mergeOfflineDebugAssets UP-TO-DATE
+> Task :app:compressOfflineDebugAssets UP-TO-DATE
+> Task :app:checkOfflineDebugDuplicateClasses UP-TO-DATE
+> Task :app:desugarOfflineDebugFileDependencies UP-TO-DATE
+> Task :app:mergeExtDexOfflineDebug UP-TO-DATE
+> Task :app:mergeLibDexOfflineDebug UP-TO-DATE
+> Task :app:dexBuilderOfflineDebug UP-TO-DATE
+> Task :app:mergeOfflineDebugGlobalSynthetics UP-TO-DATE
+> Task :app:processOfflineDebugJavaRes UP-TO-DATE
+> Task :app:mergeOfflineDebugJavaResource UP-TO-DATE
+> Task :app:mergeProjectDexOfflineDebug UP-TO-DATE
+> Task :app:mergeOfflineDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeOfflineDebugNativeLibs UP-TO-DATE
+> Task :app:stripOfflineDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningOfflineDebug UP-TO-DATE
+> Task :app:writeOfflineDebugAppMetadata UP-TO-DATE
+> Task :app:writeOfflineDebugSigningConfigVersions UP-TO-DATE
+> Task :app:packageOfflineDebug UP-TO-DATE
+> Task :app:createOfflineDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleOfflineDebug UP-TO-DATE
+
+> Task :app:assertNoNetworkPermission
+assertNoNetworkPermission: clean - 3 merged manifest(s) carry no network permission.
+
+> Task :app:kspDevcloudDebugKotlin
+> Task :app:compileDevcloudDebugKotlin
+> Task :app:compileDevcloudDebugJavaWithJavac UP-TO-DATE
+> Task :app:dexBuilderDevcloudDebug
+> Task :app:mergeDevcloudDebugGlobalSynthetics UP-TO-DATE
+> Task :app:processDevcloudDebugJavaRes UP-TO-DATE
+> Task :app:mergeDevcloudDebugJavaResource UP-TO-DATE
+> Task :app:mergeProjectDexDevcloudDebug
+> Task :app:packageDevcloudDebug
+> Task :app:createDevcloudDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleDevcloudDebug
+
+BUILD SUCCESSFUL in 19s
+81 actionable tasks: 6 executed, 75 up-to-date

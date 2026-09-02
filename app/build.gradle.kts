@@ -18,6 +18,11 @@ val museKey = run {
     }
 }
 
+// A distribution build carries NO credentials: keys compiled into a shared APK are
+// recoverable from classes.dex in seconds. Build releases with -PdistributionBuild=true
+// and supply keys at runtime via RuntimeKeys.
+val distributionBuild = providers.gradleProperty("distributionBuild").orNull == "true"
+
 val groqKey = run {
     val props = Properties()
     val localProps = rootProject.file("local.properties")
@@ -55,8 +60,8 @@ android {
         create("devcloud") {
             applicationIdSuffix = ".devcloud"
             versionNameSuffix = "-devcloud"
-            buildConfigField("String", "MUSE_API_KEY", "\"${museKey}\"")
-            buildConfigField("String", "GROQ_API_KEY", "\"${groqKey}\"")
+            buildConfigField("String", "MUSE_API_KEY", "\"${if (distributionBuild) "" else museKey}\"")
+            buildConfigField("String", "GROQ_API_KEY", "\"${if (distributionBuild) "" else groqKey}\"")
         }
     }
 

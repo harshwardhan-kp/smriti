@@ -21,7 +21,7 @@ class AsrUnavailableException(
     cause: Throwable? = null
 ) : Exception(message, cause)
 
-class PlatformAsr(private val context: Context) : Asr {
+class PlatformAsr(private val context: Context) : Asr, PushToTalk {
 
     private var activeRecognizer: SpeechRecognizer? = null
 
@@ -96,6 +96,22 @@ class PlatformAsr(private val context: Context) : Asr {
         activeRecognizer?.destroy()
         activeRecognizer = null
         result ?: ""
+    }
+
+    /**
+     * Release-to-stop, matching [com.smriti.app.capture.GroqWhisperAsr] and `VoskAsr`.
+     *
+     * Without this the offline flavor's fallback path behaved differently from every other ASR
+     * implementation: letting go of the shutter did nothing, and the user waited for
+     * SpeechRecognizer's own end-of-speech detection instead of getting an immediate result.
+     * `stopListening` ends capture and still delivers whatever was heard, unlike `cancel`.
+     */
+    override fun stopListening() {
+        try {
+            activeRecognizer?.stopListening()
+        } catch (_: Throwable) {
+            // The recognizer may already be torn down; releasing a button must never crash.
+        }
     }
 
     override fun cancel() {

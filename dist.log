@@ -1,0 +1,151 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.14/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :app:clean
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preOfflineDebugBuild UP-TO-DATE
+> Task :app:mergeOfflineDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateOfflineDebugBuildConfig
+> Task :app:checkOfflineDebugAarMetadata
+> Task :app:processOfflineDebugNavigationResources
+> Task :app:generateOfflineDebugResValues
+> Task :app:compileOfflineDebugNavigationResources
+> Task :app:mapOfflineDebugSourceSetPaths
+> Task :app:generateOfflineDebugResources
+> Task :app:packageOfflineDebugResources
+> Task :app:createOfflineDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksOfflineDebug
+> Task :app:mergeOfflineDebugResources
+> Task :app:parseOfflineDebugLocalResources
+> Task :app:processOfflineDebugMainManifest
+> Task :app:processOfflineDebugManifest
+> Task :app:mergeOfflineDebugShaders
+> Task :app:javaPreCompileOfflineDebug
+> Task :app:compileOfflineDebugShaders NO-SOURCE
+> Task :app:generateOfflineDebugAssets UP-TO-DATE
+> Task :app:mergeOfflineDebugAssets
+> Task :app:compressOfflineDebugAssets
+> Task :app:desugarOfflineDebugFileDependencies
+> Task :app:mergeOfflineDebugJniLibFolders
+> Task :app:checkOfflineDebugDuplicateClasses
+> Task :app:validateSigningOfflineDebug
+> Task :app:writeOfflineDebugAppMetadata
+> Task :app:mergeLibDexOfflineDebug
+> Task :app:writeOfflineDebugSigningConfigVersions
+> Task :app:preDevcloudDebugBuild UP-TO-DATE
+> Task :app:mergeDevcloudDebugNativeDebugMetadata NO-SOURCE
+> Task :app:generateDevcloudDebugBuildConfig
+> Task :app:checkDevcloudDebugAarMetadata
+> Task :app:processDevcloudDebugNavigationResources
+> Task :app:compileDevcloudDebugNavigationResources
+> Task :app:generateDevcloudDebugResValues
+> Task :app:mapDevcloudDebugSourceSetPaths
+> Task :app:generateDevcloudDebugResources
+> Task :app:packageDevcloudDebugResources
+> Task :app:createDevcloudDebugCompatibleScreenManifests
+> Task :app:parseDevcloudDebugLocalResources
+> Task :app:extractDeepLinksDevcloudDebug
+> Task :app:processDevcloudDebugMainManifest
+> Task :app:processDevcloudDebugManifest
+> Task :app:mergeOfflineDebugNativeLibs
+> Task :app:processDevcloudDebugManifestForPackage
+> Task :app:mergeDevcloudDebugShaders
+> Task :app:compileDevcloudDebugShaders NO-SOURCE
+> Task :app:generateDevcloudDebugAssets UP-TO-DATE
+> Task :app:javaPreCompileDevcloudDebug
+> Task :app:mergeDevcloudDebugAssets
+> Task :app:desugarDevcloudDebugFileDependencies
+> Task :app:mergeDevcloudDebugJniLibFolders
+> Task :app:mergeDevcloudDebugResources
+> Task :app:compressDevcloudDebugAssets
+> Task :app:checkDevcloudDebugDuplicateClasses
+
+> Task :app:stripOfflineDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libimage_processing_util_jni.so, libjnidispatch.so, libllm_inference_engine_jni.so, libmediapipe_tasks_jni.so, libmlkit_google_ocr_pipeline.so, libsurface_util_jni.so, libvosk.so. Run with --info option to learn more.
+
+> Task :app:mergeDevcloudDebugNativeLibs
+> Task :app:processOfflineDebugManifestForPackage
+> Task :app:validateSigningDevcloudDebug
+> Task :app:writeDevcloudDebugAppMetadata
+> Task :app:mergeLibDexDevcloudDebug
+> Task :app:writeDevcloudDebugSigningConfigVersions
+> Task :app:preOfflineDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileOfflineDebugUnitTest
+
+> Task :app:stripDevcloudDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libimage_processing_util_jni.so, libjnidispatch.so, libllm_inference_engine_jni.so, libmediapipe_tasks_jni.so, libmlkit_google_ocr_pipeline.so, libsurface_util_jni.so, libvosk.so. Run with --info option to learn more.
+
+> Task :app:processDevcloudDebugResources
+> Task :app:processOfflineDebugResources
+> Task :app:kspDevcloudDebugKotlin
+> Task :app:kspOfflineDebugKotlin
+> Task :app:mergeExtDexOfflineDebug
+> Task :app:mergeExtDexDevcloudDebug
+
+> Task :app:compileOfflineDebugKotlin
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:4:8 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:5:8 'interface ProgressListener<OutputT : Any!> : Any' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:18:28 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:72:27 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:73:27 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:79:38 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:81:46 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:83:40 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:93:34 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:95:42 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:97:36 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:101:38 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:103:46 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:105:40 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ui/CaptureScreen.kt:59:26 'val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+
+> Task :app:compileDevcloudDebugKotlin
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:4:8 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:5:8 'interface ProgressListener<OutputT : Any!> : Any' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:18:28 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:72:27 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:73:27 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:79:38 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:81:46 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:83:40 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:93:34 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:95:42 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:97:36 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:101:38 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:103:46 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ai/LlmEngine.kt:105:40 'class LlmInference : Any, AutoCloseable' is deprecated. Deprecated in Java.
+w: file:///Users/harshwardhan/Claude/smriti/app/src/main/java/com/smriti/app/ui/CaptureScreen.kt:59:26 'val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+
+> Task :app:compileOfflineDebugJavaWithJavac
+> Task :app:dexBuilderOfflineDebug
+> Task :app:mergeOfflineDebugGlobalSynthetics
+> Task :app:processOfflineDebugJavaRes
+> Task :app:mergeProjectDexOfflineDebug
+> Task :app:compileDevcloudDebugJavaWithJavac
+> Task :app:dexBuilderDevcloudDebug
+> Task :app:mergeDevcloudDebugGlobalSynthetics
+> Task :app:processDevcloudDebugJavaRes
+> Task :app:mergeProjectDexDevcloudDebug
+> Task :app:bundleOfflineDebugClassesToCompileJar
+> Task :app:bundleOfflineDebugClassesToRuntimeJar
+> Task :app:mergeOfflineDebugJavaResource
+> Task :app:mergeDevcloudDebugJavaResource
+> Task :app:kspOfflineDebugUnitTestKotlin
+> Task :app:packageOfflineDebug
+> Task :app:createOfflineDebugApkListingFileRedirect
+> Task :app:assembleOfflineDebug
+
+> Task :app:assertNoNetworkPermission
+assertNoNetworkPermission: clean - 3 merged manifest(s) carry no network permission.
+
+> Task :app:packageDevcloudDebug
+> Task :app:createDevcloudDebugApkListingFileRedirect
+> Task :app:assembleDevcloudDebug
+> Task :app:compileOfflineDebugUnitTestKotlin
+> Task :app:compileOfflineDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processOfflineDebugUnitTestJavaRes
+> Task :app:testOfflineDebugUnitTest
+
+BUILD SUCCESSFUL in 1m 11s
+89 actionable tasks: 89 executed
