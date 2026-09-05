@@ -172,4 +172,18 @@ class ExtractorJsonTest {
             DueDateResolver.resolve("x", "do it saturday", "2026-09-05", today)
         )
     }
+
+    @Test
+    fun testUnconstrainedCallsHaveNullSchemaByDefault() = kotlinx.coroutines.runBlocking {
+        var capturedSchema: String? = "not-null"
+        val fakeBackend = object : LlmBackend {
+            override val label: String = "Fake"
+            override suspend fun generate(prompt: String, maxTokens: Int, jsonSchema: String?): String {
+                capturedSchema = jsonSchema
+                return "answer"
+            }
+        }
+        fakeBackend.generate("test prompt")
+        assertNull(capturedSchema)
+    }
 }

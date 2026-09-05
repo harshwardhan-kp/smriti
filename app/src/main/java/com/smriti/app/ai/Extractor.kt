@@ -15,6 +15,8 @@ private const val TAG = "SmritiExtract"
  */
 private const val MIN_MEANINGFUL_CHARS = 12
 
+private const val EXTRACTION_SCHEMA = """{"type":"object","properties":{"actions":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"due":{"type":["string","null"]}},"required":["text","due"]}},"title":{"type":"string"},"summary":{"type":"string"},"people":{"type":"array","items":{"type":"string"}},"amounts":{"type":"array","items":{"type":"object","properties":{"value":{"type":"number"},"currency":{"type":"string"},"label":{"type":"string"}},"required":["value","currency","label"]}},"tags":{"type":"array","items":{"type":"string"}}},"required":["actions","title","summary","people","amounts","tags"]}"""
+
 class Extractor(private val backend: LlmBackend? = null) {
 
     private val gson = Gson()
@@ -43,7 +45,7 @@ class Extractor(private val backend: LlmBackend? = null) {
                 Log.i(TAG, "attempt 1 (with OCR)")
             }
             val prompt1 = buildPrompt(ocrText, transcript, includeOcr = true)
-            val response1 = activeBackend.generate(prompt1)
+            val response1 = activeBackend.generate(prompt1, jsonSchema = EXTRACTION_SCHEMA)
             if (BuildConfig.DEBUG) {
                 response1.lines().forEach { Log.i(TAG, it) }
             }
@@ -77,7 +79,7 @@ class Extractor(private val backend: LlmBackend? = null) {
             Log.i(TAG, "attempt 2 (shortened retry)")
         }
         val prompt2 = buildPrompt(ocrText = "", transcript = transcript, includeOcr = false)
-        val response2 = activeBackend.generate(prompt2)
+        val response2 = activeBackend.generate(prompt2, jsonSchema = EXTRACTION_SCHEMA)
         if (BuildConfig.DEBUG) {
             response2.lines().forEach { Log.i(TAG, it) }
         }

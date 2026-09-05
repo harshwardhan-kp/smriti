@@ -50,6 +50,7 @@ object Enricher {
         drainMutex.withLock {
             val appContext = context.applicationContext
             val dao = SmritiDb.get(appContext).recordDao()
+            dao.resetRunningToPending()
             val pending = dao.pendingEnrichment()
             if (pending.isEmpty()) {
                 return@withLock

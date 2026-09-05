@@ -47,6 +47,9 @@ interface RecordDao {
     @Query("SELECT * FROM records WHERE enrichmentState = 'PENDING' AND enrichmentAttempts < 3 ORDER BY createdAt ASC")
     suspend fun pendingEnrichment(): List<RecordEntity>
 
+    @Query("UPDATE records SET enrichmentState = 'PENDING' WHERE enrichmentState = 'RUNNING'")
+    suspend fun resetRunningToPending()
+
     @Query("UPDATE records SET enrichmentState = :state, enrichmentAttempts = enrichmentAttempts + :attemptDelta, enrichmentError = :error WHERE id = :id")
     suspend fun markEnrichment(id: Long, state: String, attemptDelta: Int, error: String?)
 
