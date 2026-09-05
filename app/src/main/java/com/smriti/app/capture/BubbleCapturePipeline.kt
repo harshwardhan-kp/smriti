@@ -15,13 +15,24 @@ class BubbleCapturePipeline(
 ) {
 
     suspend fun capture(photoFile: File): Long = withContext(Dispatchers.IO) {
+        saveRecord(photoFile.absolutePath)
+    }
+
+    suspend fun captureVoiceOnly(): Long = withContext(Dispatchers.IO) {
+        saveRecord("")
+    }
+
+    private suspend fun saveRecord(photoPath: String): Long {
         val transcript = asr.transcribe()
+        if (photoPath.isEmpty() && !CapturePipeline.isWorthSaving(transcript)) {
+            return -1L
+        }
         val ocrText = ""
 
         val now = System.currentTimeMillis()
         val record = RecordEntity(
             createdAt = now,
-            photoPath = photoFile.absolutePath,
+            photoPath = photoPath,
             ocrText = ocrText,
             transcript = transcript,
             title = titleFor("", transcript, ""),
@@ -35,7 +46,7 @@ class BubbleCapturePipeline(
 
         val recordId = dao.insertRecord(record)
         Enricher.request(context)
-        recordId
+        return recordId
     }
 
     /**

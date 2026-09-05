@@ -57,6 +57,8 @@ class BubbleService : Service() {
         private const val PREFS_NAME = "smriti_bubble_prefs"
         private const val PREF_BUBBLE_X = "bubble_x"
         private const val PREF_BUBBLE_Y = "bubble_y"
+        const val PREF_MIC_BUBBLE_X = "mic_bubble_x"
+        const val PREF_MIC_BUBBLE_Y = "mic_bubble_y"
         private const val LONG_PRESS_TIMEOUT_MS = 400L
 
         @Volatile
@@ -77,6 +79,28 @@ class BubbleService : Service() {
             }
             context.startService(intent)
         }
+
+        internal fun defaultMicBubbleOffset(captureHeight: Int, density: Float): Int =
+            captureHeight + (8 * density).toInt()
+
+        internal fun defaultMicBubbleY(captureY: Int, captureHeight: Int, density: Float): Int =
+            captureY + defaultMicBubbleOffset(captureHeight, density)
+
+        internal fun clampPosition(
+            x: Int,
+            y: Int,
+            width: Int,
+            height: Int,
+            screenWidth: Int,
+            screenHeight: Int
+        ): Pair<Int, Int> {
+            val maxX = screenWidth - width
+            val maxY = screenHeight - height
+            return Pair(
+                x.coerceIn(0, maxOf(0, maxX)),
+                y.coerceIn(0, maxOf(0, maxY))
+            )
+        }
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -87,6 +111,11 @@ class BubbleService : Service() {
     private lateinit var layoutParams: WindowManager.LayoutParams
     private lateinit var normalDrawable: GradientDrawable
     private lateinit var liveDrawable: GradientDrawable
+
+    private lateinit var micBubbleView: View
+    private lateinit var micLayoutParams: WindowManager.LayoutParams
+    private lateinit var micNormalDrawable: GradientDrawable
+    private lateinit var micLiveDrawable: GradientDrawable
 
     private lateinit var pipeline: BubbleCapturePipeline
     private lateinit var asr: Asr
@@ -99,6 +128,9 @@ class BubbleService : Service() {
     private var bubbleSizeLive: Int = 0
     private var isBubbleLive: Boolean = false
 
+    private var micBubbleSize: Int = 0
+    private var isMicBubbleLive: Boolean = false
+
     private var downRawX = 0f
     private var downRawY = 0f
     private var initialX = 0
@@ -107,11 +139,22 @@ class BubbleService : Service() {
     private var isLongPressed = false
     private var touchSlop = 0f
 
+    private var micDownRawX = 0f
+    private var micDownRawY = 0f
+    private var micInitialX = 0
+    private var micInitialY = 0
+    private var isMicDragging = false
+    private var isMicLongPressed = false
+
+    @Volatile
+    private var isRecording = false
+
     @Volatile
     private var userReleased = false
     @Volatile
     private var pendingPhoto: CompletableDeferred<File>? = null
     private var captureJob: Job? = null
+    private var micCaptureJob: Job? = null
 
     private val captureReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -129,6 +172,13 @@ class BubbleService : Service() {
         if (!isDragging) {
             isLongPressed = true
             startCapture()
+        }
+    }
+
+    private val micLongPressRunnable = Runnable {
+        if (!isMicDragging) {
+            isMicLongPressed = true
+            startMicCapture()
         }
     }
 
@@ -159,7 +209,7 @@ class BubbleService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Smriti capture bubble")
-            .setContentText("Long-press the bubble to capture and narrate")
+            .setContentText("Hold the amber bubble to capture the screen · hold the red one for a voice note")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -209,6 +259,7 @@ class BubbleService : Service() {
 
         bubbleSizeNormal = (60 * density).toInt()
         bubbleSizeLive = (72 * density).toInt()
+        micBubbleSize = (44 * density).toInt()
 
         // Amber colors matching theme (0xFFF2B705)
         normalDrawable = GradientDrawable().apply {
@@ -221,6 +272,21 @@ class BubbleService : Service() {
             shape = GradientDrawable.OVAL
             setColor(0xFFF2B705.toInt()) // Vivid bright amber
             setStroke((4 * density).toInt(), 0xFFE53935.toInt()) // Red recording alert ring
+        }
+
+        // Mic bubble drawables:
+        // idle: OVAL, translucent ink 0xCC0B0B0B, 2.dp stroke in amber 0x99F2B705
+        // live: OVAL, solid red 0xFFE53935, 4.dp stroke in cream 0xFFFBF8F1
+        micNormalDrawable = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(0xCC0B0B0B.toInt())
+            setStroke((2 * density).toInt(), 0x99F2B705.toInt())
+        }
+
+        micLiveDrawable = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(0xFFE53935.toInt())
+            setStroke((4 * density).toInt(), 0xFFFBF8F1.toInt())
         }
 
         val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -250,6 +316,27 @@ class BubbleService : Service() {
             handleTouchEvent(event)
         }
 
+        micLayoutParams = WindowManager.LayoutParams(
+            micBubbleSize,
+            micBubbleSize,
+            layoutType,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+        }
+
+        loadSavedMicPosition()
+
+        micBubbleView = View(this).apply {
+            background = micNormalDrawable
+            contentDescription = "Record a voice note"
+        }
+
+        micBubbleView.setOnTouchListener { _, event ->
+            handleMicTouchEvent(event)
+        }
+
         // Initialize capture pipeline with Whisper ASR
         val dao = SmritiDb.get(applicationContext).recordDao()
         asr = AsrFactory.create(applicationContext)
@@ -263,12 +350,14 @@ class BubbleService : Service() {
         }
 
         attachBubbleView()
+        attachMicBubbleView()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent == null) {
             Log.i(TAG, "Restarted with null intent (sticky restart); re-attaching bubble overlay")
             attachBubbleView()
+            attachMicBubbleView()
             return START_STICKY
         }
         when (intent.action) {
@@ -279,10 +368,12 @@ class BubbleService : Service() {
             }
             ACTION_START -> {
                 attachBubbleView()
+                attachMicBubbleView()
             }
             else -> {
                 Log.w(TAG, "Unknown action: ${intent.action}")
                 attachBubbleView()
+                attachMicBubbleView()
             }
         }
         return START_STICKY
@@ -294,6 +385,8 @@ class BubbleService : Service() {
     // WindowManager threw "has already been added" -- which then stopped the whole service.
     @Volatile
     private var bubbleAttached = false
+    @Volatile
+    private var micBubbleAttached = false
 
     private fun attachBubbleView() {
         if (!::bubbleView.isInitialized || bubbleAttached) return
@@ -306,6 +399,19 @@ class BubbleService : Service() {
             Log.e(TAG, "Failed to add bubble overlay: ${e.message}", e)
             stopForegroundNotification()
             stopSelf()
+            return
+        }
+        attachMicBubbleView()
+    }
+
+    private fun attachMicBubbleView() {
+        if (!::micBubbleView.isInitialized || micBubbleAttached) return
+        try {
+            windowManager.addView(micBubbleView, micLayoutParams)
+            micBubbleAttached = true
+            Log.i(TAG, "Mic bubble overlay attached")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to add mic bubble overlay: ${e.message}", e)
         }
     }
 
@@ -336,7 +442,7 @@ class BubbleService : Service() {
                     if (isDragging) {
                         layoutParams.x = (initialX + dx).toInt()
                         layoutParams.y = (initialY + dy).toInt()
-                        clampLayoutParams()
+                        clampLayoutParams(layoutParams)
                         try {
                             windowManager.updateViewLayout(bubbleView, layoutParams)
                         } catch (e: Exception) {
@@ -365,7 +471,69 @@ class BubbleService : Service() {
         }
     }
 
+    private fun handleMicTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                micDownRawX = event.rawX
+                micDownRawY = event.rawY
+                micInitialX = micLayoutParams.x
+                micInitialY = micLayoutParams.y
+                isMicDragging = false
+                isMicLongPressed = false
+
+                handler.postDelayed(micLongPressRunnable, LONG_PRESS_TIMEOUT_MS)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = event.rawX - micDownRawX
+                val dy = event.rawY - micDownRawY
+
+                if (!isMicLongPressed) {
+                    if (!isMicDragging) {
+                        if (hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
+                            isMicDragging = true
+                            handler.removeCallbacks(micLongPressRunnable)
+                        }
+                    }
+                    if (isMicDragging) {
+                        micLayoutParams.x = (micInitialX + dx).toInt()
+                        micLayoutParams.y = (micInitialY + dy).toInt()
+                        clampLayoutParams(micLayoutParams)
+                        try {
+                            windowManager.updateViewLayout(micBubbleView, micLayoutParams)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to updateViewLayout on mic drag: ${e.message}")
+                        }
+                    }
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                handler.removeCallbacks(micLongPressRunnable)
+
+                if (isMicDragging) {
+                    saveMicPosition()
+                } else if (isMicLongPressed) {
+                    stopMicCapture()
+                } else if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    Toast.makeText(this, "Hold to record a voice note", Toast.LENGTH_SHORT).show()
+                }
+
+                isMicDragging = false
+                isMicLongPressed = false
+                return true
+            }
+            else -> return false
+        }
+    }
+
     private fun startCapture() {
+        if (isRecording) {
+            Toast.makeText(this, "Already recording", Toast.LENGTH_SHORT).show()
+            isLongPressed = false
+            return
+        }
+
         userReleased = false
         setBubbleLive(true)
 
@@ -380,6 +548,8 @@ class BubbleService : Service() {
             isLongPressed = false
             return
         }
+
+        isRecording = true
 
         // IMPORTANT ORDERING: request screenshot FIRST, before starting the recorder.
         val deferred = CompletableDeferred<File>()
@@ -416,6 +586,7 @@ class BubbleService : Service() {
             } catch (t: Throwable) {
                 Log.e(TAG, "Bubble capture error: ${t.message}", t)
             } finally {
+                isRecording = false
                 withContext(Dispatchers.Main) {
                     setBubbleLive(false)
                 }
@@ -425,6 +596,41 @@ class BubbleService : Service() {
 
     private fun stopCaptureAndSave() {
         userReleased = true
+        (asr as? PushToTalk)?.stopListening()
+    }
+
+    private fun startMicCapture() {
+        if (isRecording) {
+            Toast.makeText(this, "Already recording", Toast.LENGTH_SHORT).show()
+            isMicLongPressed = false
+            return
+        }
+
+        isRecording = true
+        setMicBubbleLive(true)
+
+        micCaptureJob?.cancel()
+        micCaptureJob = serviceScope.launch(Dispatchers.IO) {
+            try {
+                val recordId = pipeline.captureVoiceOnly()
+                Log.i(TAG, "Mic bubble capture record id: $recordId")
+                if (recordId == -1L) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@BubbleService, "Nothing heard", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Mic bubble capture error: ${t.message}", t)
+            } finally {
+                isRecording = false
+                withContext(Dispatchers.Main) {
+                    setMicBubbleLive(false)
+                }
+            }
+        }
+    }
+
+    private fun stopMicCapture() {
         (asr as? PushToTalk)?.stopListening()
     }
 
@@ -443,7 +649,7 @@ class BubbleService : Service() {
         layoutParams.y -= diff
         layoutParams.width = newSize
         layoutParams.height = newSize
-        clampLayoutParams()
+        clampLayoutParams(layoutParams)
 
         if (bubbleView.isAttachedToWindow) {
             try {
@@ -454,6 +660,14 @@ class BubbleService : Service() {
         }
     }
 
+    private fun setMicBubbleLive(isLive: Boolean) {
+        if (isLive == isMicBubbleLive) return
+        isMicBubbleLive = isLive
+
+        if (!::micBubbleView.isInitialized) return
+        micBubbleView.background = if (isLive) micLiveDrawable else micNormalDrawable
+    }
+
     private fun loadSavedPosition() {
         val displayMetrics = resources.displayMetrics
         val density = displayMetrics.density
@@ -462,7 +676,7 @@ class BubbleService : Service() {
 
         layoutParams.x = prefs.getInt(PREF_BUBBLE_X, defaultX)
         layoutParams.y = prefs.getInt(PREF_BUBBLE_Y, defaultY)
-        clampLayoutParams()
+        clampLayoutParams(layoutParams)
     }
 
     private fun savePosition() {
@@ -472,12 +686,35 @@ class BubbleService : Service() {
             .apply()
     }
 
-    private fun clampLayoutParams() {
+    private fun loadSavedMicPosition() {
+        val density = resources.displayMetrics.density
+        val defaultMicX = layoutParams.x
+        val defaultMicY = defaultMicBubbleY(layoutParams.y, bubbleSizeNormal, density)
+
+        micLayoutParams.x = prefs.getInt(PREF_MIC_BUBBLE_X, defaultMicX)
+        micLayoutParams.y = prefs.getInt(PREF_MIC_BUBBLE_Y, defaultMicY)
+        clampLayoutParams(micLayoutParams)
+    }
+
+    private fun saveMicPosition() {
+        prefs.edit()
+            .putInt(PREF_MIC_BUBBLE_X, micLayoutParams.x)
+            .putInt(PREF_MIC_BUBBLE_Y, micLayoutParams.y)
+            .apply()
+    }
+
+    private fun clampLayoutParams(params: WindowManager.LayoutParams) {
         val displayMetrics = resources.displayMetrics
-        val maxX = displayMetrics.widthPixels - layoutParams.width
-        val maxY = displayMetrics.heightPixels - layoutParams.height
-        layoutParams.x = layoutParams.x.coerceIn(0, maxOf(0, maxX))
-        layoutParams.y = layoutParams.y.coerceIn(0, maxOf(0, maxY))
+        val (clampedX, clampedY) = clampPosition(
+            params.x,
+            params.y,
+            params.width,
+            params.height,
+            displayMetrics.widthPixels,
+            displayMetrics.heightPixels
+        )
+        params.x = clampedX
+        params.y = clampedY
     }
 
     override fun onDestroy() {
@@ -487,6 +724,7 @@ class BubbleService : Service() {
         handler.removeCallbacksAndMessages(null)
         serviceScope.cancel()
         captureJob?.cancel()
+        micCaptureJob?.cancel()
         ScreenCaptureService.onCaptureCallback = null
 
         try {
@@ -501,6 +739,16 @@ class BubbleService : Service() {
             }
         }
         bubbleAttached = false
+
+        if (::micBubbleView.isInitialized && micBubbleView.isAttachedToWindow) {
+            try {
+                windowManager.removeView(micBubbleView)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to remove mic bubble view: ${e.message}")
+            }
+        }
+        micBubbleAttached = false
+
         Log.i(TAG, "BubbleService destroyed")
     }
 }
