@@ -1,0 +1,64 @@
+Add an ASR verification hook to this Android/Kotlin repo. Edit/create files directly. ADDITIVE ONLY.
+
+WHY
+SherpaWhisperAsr was just added. It compiles and its unit tests pass, but NOTHING has proven it
+actually transcribes audio on the device. Its failure mode is silent: a wrong endianness or a
+wrong normalisation divisor in the WAV-to-FloatArray step yields silence or noise, not an
+exception. The only way to catch that is to run known audio through the real native path and
+compare against a known transcript.
+
+Reference WAVs are already on the device at /data/local/tmp/asr/test_wavs/ (0.wav, 1.wav) —
+mono, 16 kHz, 16-bit, the same format AudioRecorder produces.
+
+CHANGES
+
+1. app/src/offline/java/com/smriti/app/capture/SherpaWhisperAsr.kt
+   Add ONE new function to the existing companion object (do not change anything else):
+       internal suspend fun transcribeFile(context: Context, wav: java.io.File): String
+   It must reuse the SAME cached recognizer and the SAME readWavSamples() the live path uses —
+   the whole point is exercising the real code path, not a parallel one. Create a stream,
+   acceptWaveform, decode, getResult, release the stream in a finally, return the trimmed text.
+   Hold the same synchronized(recognizer) lock the live path uses.
+   Do NOT delete the wav file (unlike the live path, these are reference fixtures).
+   To reach the private cached recognizer from the companion, refactor minimally: the existing
+   getOrLoadRecognizer() is an instance method — either lift it to the companion or add a
+   companion-level loader that shares the same @Volatile cachedRecognizer and recognizerMutex.
+   The live transcribe() path must keep working EXACTLY as it does now.
+
+2. CREATE app/src/offline/java/com/smriti/app/capture/AsrSelfTest.kt
+       object AsrSelfTest { const val EXTRA = "smriti_asrtest"
+                            fun run(context: Context, scope: CoroutineScope) }
+   Log tag "SmritiAsr". On Dispatchers.IO:
+     - Log "=== ASR SELF TEST START ==="
+     - Log which model WhisperModelProvisioner.locate(context) resolved (or an error if null)
+     - Time and log recognizer load once, as "load: <n> ms"
+     - For each *.wav in /data/local/tmp/asr/test_wavs (sorted by name):
+           log "file: <name>"
+           time transcribeFile, log "  ms: <n>"
+           log "  text: <transcript>"
+     - Wrap each file in try/catch(Throwable) and log "  FAILED <class>: <message>", continuing
+       to the next file.
+     - Log "=== ASR SELF TEST END ===" in a finally.
+
+3. CREATE app/src/devcloud/java/com/smriti/app/capture/AsrSelfTest.kt
+   A no-op object with the IDENTICAL signature that just logs that the ASR self-test is
+   offline-only. Required because MainActivity lives in `main` and is shared by both flavors —
+   this is the same pattern already used for NpuProbe and BackendFactory.
+
+4. app/src/main/java/com/smriti/app/MainActivity.kt
+   Add the same extra-handling pattern already used for SelfTest and NpuProbe:
+       if (intent?.getBooleanExtra(AsrSelfTest.EXTRA, false) == true) {
+           AsrSelfTest.run(this, lifecycleScope)
+       }
+   Import com.smriti.app.capture.AsrSelfTest.
+
+CONSTRAINTS
+- Do NOT change AsrFactory, VoskAsr, PlatformAsr, AudioRecorder, WhisperModelProvisioner,
+  CapturePipeline, or any UI.
+- Do NOT change the behaviour of SherpaWhisperAsr.transcribe().
+- Kotlin 2.0.21, coroutines.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- Offline flavor must not gain a network permission.
+
+Print a summary of files created/changed.

@@ -1,0 +1,96 @@
+Add Whisper speech-to-text to this Android/Kotlin repo via sherpa-onnx. Edit/create files directly.
+
+WHY
+OCR was just removed from the capture path. The voice transcript is now the ONLY text input to
+a capture, so ASR accuracy is load-bearing. Vosk small is the weakest component. Whisper small
+(multilingual) handles the Hindi/English code-switching this app is built for.
+
+ALREADY DONE — DO NOT REDO
+- app/libs/sherpa-onnx-1.13.7.aar exists (47 MB, gitignored, fetched by scripts/fetch-sherpa.sh).
+- Model files are already on the test device at /data/local/tmp/asr/ :
+      small-encoder.int8.onnx   (107 MB)
+      small-decoder.int8.onnx   (250 MB)
+      small-tokens.txt          (798 KB)
+
+CHANGES
+
+1. app/build.gradle.kts
+   Add exactly one dependency line next to the existing vosk line:
+       implementation(files("libs/sherpa-onnx-1.13.7.aar"))
+   Change NOTHING else. Do NOT remove the vosk dependency — Vosk stays as a fallback.
+
+2. CREATE app/src/main/java/com/smriti/app/capture/WhisperModelProvisioner.kt
+   Mirror the existing VoskModelProvisioner.kt in the same package (read it and match its
+   style, KDoc tone and missingMessage() format).
+       object WhisperModelProvisioner {
+           data class Paths(val encoder: File, val decoder: File, val tokens: File)
+           fun locate(context: Context): Paths?
+           fun missingMessage(): String
+       }
+   Search these directories in order:
+       File(context.filesDir, "asr")
+       File("/data/local/tmp/asr")
+   A directory only counts if ALL THREE of these exist and are readable files:
+       *encoder*.onnx   *decoder*.onnx   *tokens*.txt
+   Prefer a filename containing "int8" when both int8 and non-int8 encoders/decoders are
+   present — int8 is a quarter the size and what we push.
+
+3. CREATE app/src/offline/java/com/smriti/app/capture/SherpaWhisperAsr.kt
+       class SherpaWhisperAsr(private val context: Context) : Asr, PushToTalk
+   Model it CLOSELY on the existing VoskAsr.kt in the same source set: same AudioRecorder use,
+   same CompletableDeferred + PushToTalk.stopListening() push-to-talk handling, same
+   withTimeoutOrNull(maxMillis), same @Volatile static caching of the loaded model behind a
+   Mutex, same AsrUnavailableException usage. Read VoskAsr.kt first and follow it.
+
+   sherpa-onnx API (verified by javap against the actual AAR — use exactly this):
+       import com.k2fsa.sherpa.onnx.*
+       val cfg = OfflineRecognizerConfig(
+           featConfig = FeatureConfig(sampleRate = 16000, featureDim = 80),
+           modelConfig = OfflineModelConfig(
+               whisper = OfflineWhisperModelConfig(
+                   encoder = <encoder path>,
+                   decoder = <decoder path>,
+                   language = "",          // "" = auto-detect language
+                   task = "transcribe"
+               ),
+               tokens = <tokens path>,
+               numThreads = 4,
+               debug = false
+           ),
+           decodingMethod = "greedy_search"
+       )
+       val recognizer = OfflineRecognizer(config = cfg)   // assetManager defaults to null -> reads file paths
+       val stream = recognizer.createStream()
+       stream.acceptWaveform(samples, 16000)              // samples is FloatArray
+       recognizer.decode(stream)
+       val text = recognizer.getResult(stream).text
+       stream.release()
+   Use NAMED arguments everywhere — OfflineModelConfig has 25 constructor parameters and
+   positional arguments will silently bind to the wrong slots.
+
+   CRITICAL — WAV to FloatArray conversion:
+   AudioRecorder.stop() returns a File: 16 kHz mono 16-bit PCM WAV with a 44-byte header.
+   sherpa needs FloatArray normalised to [-1.0, 1.0]. So: skip the first 44 bytes, read the
+   rest as LITTLE-ENDIAN signed 16-bit samples, and divide each by 32768.0f. Getting the
+   endianness or the divisor wrong yields silence or noise, not an error — there is no way to
+   detect it except by listening to the output, so be careful here.
+
+   Cache the OfflineRecognizer statically (loading is slow, ~seconds) exactly as VoskAsr
+   caches its Model. Never load it twice.
+
+4. app/src/offline/java/com/smriti/app/capture/AsrFactory.kt
+   New preference order, with the existing KDoc updated to explain it:
+       SherpaWhisperAsr  when WhisperModelProvisioner.locate() != null
+       VoskAsr           when VoskModelProvisioner.locate() != null
+       PlatformAsr       otherwise
+   Keep the existing explanation of why PlatformAsr is last (LANGUAGE_PACK_ERROR).
+
+CONSTRAINTS
+- Do NOT modify VoskAsr.kt, PlatformAsr.kt, AudioRecorder.kt, Asr.kt, or the devcloud flavor.
+- Do NOT change the Asr or PushToTalk interfaces.
+- Kotlin 2.0.21, coroutines. minSdk 26.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- The offline flavor must NOT gain a network permission (:app:assertNoNetworkPermission).
+
+Print a summary of files created/changed.

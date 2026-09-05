@@ -1,0 +1,53 @@
+Simplify the capture path in this Android/Kotlin repo. Edit files directly.
+
+DECISION (already made, do not revisit)
+Capture no longer runs OCR. The photo is kept purely as evidence. The voice transcript becomes
+the ONLY text input to extraction. ML Kit goes away entirely.
+
+WHY THIS MATTERS BEYOND TIDINESS
+ML Kit's transitive dependency com.google.android.datatransport:transport-backend-cct declares
+INTERNET in its own manifest, which the manifest merger silently added to this app. That is why
+app/src/main/AndroidManifest.xml carries these two lines:
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+Removing ML Kit may make those unnecessary. DO NOT delete them in this task — the build task
+:app:assertNoNetworkPermission is what proves whether they are still needed, and we will test
+that separately. Leave the manifest completely untouched.
+
+CHANGES
+
+1. DELETE app/src/main/java/com/smriti/app/ai/Ocr.kt
+
+2. app/build.gradle.kts — remove ONLY these two lines:
+       implementation("com.google.mlkit:text-recognition:16.0.1")
+       implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+   Change NOTHING else in this file. In particular do not touch the litertlm dependency, the
+   freeCompilerArgs line, the flavors, or the assertNoNetworkPermission task.
+
+3. app/src/main/java/com/smriti/app/capture/CapturePipeline.kt
+   - Remove the `import com.smriti.app.ai.Ocr`.
+   - In run(): delete the OCR half of the coroutineScope block. There is no longer any parallel
+     work, so replace the whole `coroutineScope { ... }` / `Pair(...)` construct with a simple
+     sequential transcript fetch:
+         val transcript = if (withVoice) asr.transcribe() else ""
+     and use `val ocrText = ""` so the rest of the function and the RecordEntity keep compiling.
+   - Do NOT emit CaptureStage.Reading any more (it represented the OCR pass). Keep the
+     `Reading` member declared in the sealed interface — other code may reference it — but add
+     a one-line comment saying it is retained for compatibility and no longer emitted.
+   - Keep writing `ocrText = ocrText` (empty string) into RecordEntity. IMPORTANT: do NOT remove
+     the ocrText column from RecordEntity or any DAO. That is a Room schema change and would
+     need a migration; without one, existing user records would be destroyed.
+   - Leave titleFor(), embedFor(), and parseDue() signatures and bodies UNCHANGED. They already
+     handle a blank ocrText correctly.
+
+4. Do NOT change Extractor.kt at all. Its includeOcr branch simply stops being taken when
+   ocrText is blank — that path is still unit-tested and must keep working.
+
+CONSTRAINTS
+- Do NOT touch: AndroidManifest.xml, Extractor.kt, RecordEntity, RecordDao, Converters,
+  any UI file, LlmEngine.kt, BackendPolicy.kt, ModelProvisioner.kt, NpuProbe.kt.
+- Kotlin 2.0.21, coroutines.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+
+Print a short summary of what you changed.

@@ -1,0 +1,53 @@
+Fix a dead debug affordance in this Android/Kotlin repo. Edit the files directly.
+
+PROBLEM
+`SelfTest.run(context, scope, backend, resetPolicy)` in app/src/main/java/com/smriti/app/SelfTest.kt
+receives `backend` ("cpu"/"gpu"/null) and `resetPolicy` from MainActivity via adb extras
+(--es backend gpu --ez reset_backend true). It logs them and then calls
+`BackendFactory.create(context)`, which takes ONLY a context. Both values are silently dropped.
+`BackendPolicy.reset()` has zero callers. So the documented way to re-evaluate the GPU on a
+device does nothing, and the only way to clear a GPU quarantine today is `adb shell pm clear`,
+which also destroys the user's records.
+
+REQUIRED CHANGES
+
+1. app/src/offline/java/com/smriti/app/ai/BackendFactory.kt
+   Change to:
+       suspend fun create(
+           context: Context,
+           backend: String? = null,
+           resetPolicy: Boolean = false
+       ): Result<LlmBackend>
+   Behaviour:
+     - if resetPolicy, call BackendPolicy(context).reset() BEFORE anything else
+     - map backend, case-insensitive: "cpu" -> LlmInference.Backend.CPU,
+       "gpu" -> LlmInference.Backend.GPU, anything else/null -> null
+     - pass that as the `forced` argument of LlmHolder.get(context, forced)
+     - keep returning LocalLlmBackend(engine) exactly as now
+
+2. app/src/devcloud/java/com/smriti/app/ai/BackendFactory.kt
+   Same signature (SelfTest lives in main and must compile against both flavors).
+   Accept both new parameters and ignore them. Do not change its existing behaviour.
+
+3. app/src/main/java/com/smriti/app/ai/LlmEngine.kt — object LlmHolder
+   BUG YOU MUST FIX: `get(context, forced)` returns the cached `engine` whenever one is
+   non-null, so a forced backend is ignored if any engine was already built in this process.
+   Change it so that when `forced != null`, the cached engine is closed and rebuilt with the
+   forced backend. When `forced == null`, keep the existing cache-first behaviour unchanged.
+   Keep the Mutex; do the close+rebuild inside the lock. Never leak an engine.
+
+4. app/src/main/java/com/smriti/app/SelfTest.kt
+   Pass `backend` and `resetPolicy` into BackendFactory.create. Keep all existing Log.i lines.
+   Update the KDoc that currently claims these are "honoured only by the offline flavor's
+   BackendFactory" so it describes what the code now actually does.
+
+CONSTRAINTS
+- Do NOT change the `LlmBackend` interface, `Extractor`, `Recall`, `StructuredRecord`, or any UI.
+- Do NOT change BackendPolicy.kt's logic. `reset()` already exists — just call it.
+- Kotlin 2.0.21, minSdk 26, MediaPipe tasks-genai 0.10.35, coroutines.
+- `LlmInference` is com.google.mediapipe.tasks.genai.llminference.LlmInference.
+- Both flavors must compile:
+    ./gradlew assembleOfflineDebug assembleDevcloudDebug
+- The offline flavor must not gain any network permission.
+
+When done, print a summary of each file you changed and why.
