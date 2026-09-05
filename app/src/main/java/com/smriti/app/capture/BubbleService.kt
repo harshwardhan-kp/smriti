@@ -209,16 +209,23 @@ class BubbleService : Service() {
         return START_STICKY
     }
 
+    // Tracked explicitly rather than via View.isAttachedToWindow: attachment is asynchronous,
+    // so isAttachedToWindow is still false immediately after addView() returns. onCreate and
+    // onStartCommand both used to call this, the second call passed the stale guard, and
+    // WindowManager threw "has already been added" -- which then stopped the whole service.
+    @Volatile
+    private var bubbleAttached = false
+
     private fun attachBubbleView() {
-        if (::bubbleView.isInitialized && !bubbleView.isAttachedToWindow) {
-            try {
-                windowManager.addView(bubbleView, layoutParams)
-                running = true
-                Log.i(TAG, "Bubble overlay attached")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to add bubble overlay: ${e.message}", e)
-                stopSelf()
-            }
+        if (!::bubbleView.isInitialized || bubbleAttached) return
+        try {
+            windowManager.addView(bubbleView, layoutParams)
+            bubbleAttached = true
+            running = true
+            Log.i(TAG, "Bubble overlay attached")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to add bubble overlay: ${e.message}", e)
+            stopSelf()
         }
     }
 
@@ -408,6 +415,7 @@ class BubbleService : Service() {
         if (::bubbleView.isInitialized && bubbleView.isAttachedToWindow) {
             try {
                 windowManager.removeView(bubbleView)
+                bubbleAttached = false
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to remove bubble view: ${e.message}")
             }
