@@ -3,6 +3,7 @@ package com.smriti.app.capture
 import android.content.Context
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -23,6 +24,8 @@ class VoskAsr(private val context: Context) : Asr, PushToTalk {
     private var recorder: AudioRecorder? = null
 
     companion object {
+        private const val TRAILING_PAD_MS = 700L
+
         @Volatile
         private var cachedModel: Model? = null
         private val modelMutex = Mutex()
@@ -73,8 +76,15 @@ class VoskAsr(private val context: Context) : Asr, PushToTalk {
 
             rec.start()
 
-            withTimeoutOrNull(maxMillis) {
+            val released = withTimeoutOrNull(maxMillis) {
                 deferred.await()
+            } != null
+
+            if (released) {
+                // Humans release the button as they finish the last word, so cutting the
+                // microphone at that exact instant clips it. Wait a short trailing pad
+                // before stopping the recorder so the final syllable is captured.
+                delay(TRAILING_PAD_MS)
             }
 
             val wav = try {
