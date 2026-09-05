@@ -10,3 +10,16 @@ local.properties
 final.log
 lint.log
 test.log
+
+# Vendored sherpa-onnx AAR (47 MB). Fetch with scripts/fetch-sherpa.sh — see PROGRESS.md.
+app/libs/*.aar
+
+# Kotlin compiler error dumps
+.kotlin/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Per-run build logs from this session
+notes/build-*.log
