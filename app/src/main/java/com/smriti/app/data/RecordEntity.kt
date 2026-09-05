@@ -16,7 +16,12 @@ data class RecordEntity(
     val peopleJson: String,
     val amountsJson: String,
     val tagsJson: String,
-    val embedding: ByteArray?
+    val embedding: ByteArray?,
+    val enrichmentState: String = "PENDING",   // PENDING | RUNNING | DONE | FAILED
+    val enrichmentAttempts: Int = 0,
+    val enrichedAt: Long? = null,
+    val enrichmentModel: String? = null,
+    val enrichmentError: String? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -38,6 +43,11 @@ data class RecordEntity(
             if (other.embedding == null) return false
             if (!embedding.contentEquals(other.embedding)) return false
         } else if (other.embedding != null) return false
+        if (enrichmentState != other.enrichmentState) return false
+        if (enrichmentAttempts != other.enrichmentAttempts) return false
+        if (enrichedAt != other.enrichedAt) return false
+        if (enrichmentModel != other.enrichmentModel) return false
+        if (enrichmentError != other.enrichmentError) return false
 
         return true
     }
@@ -54,6 +64,11 @@ data class RecordEntity(
         result = 31 * result + amountsJson.hashCode()
         result = 31 * result + tagsJson.hashCode()
         result = 31 * result + (embedding?.contentHashCode() ?: 0)
+        result = 31 * result + enrichmentState.hashCode()
+        result = 31 * result + enrichmentAttempts.hashCode()
+        result = 31 * result + (enrichedAt?.hashCode() ?: 0)
+        result = 31 * result + (enrichmentModel?.hashCode() ?: 0)
+        result = 31 * result + (enrichmentError?.hashCode() ?: 0)
         return result
     }
 }

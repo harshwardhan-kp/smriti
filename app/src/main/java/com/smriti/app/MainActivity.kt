@@ -41,6 +41,7 @@ import com.smriti.app.ui.DetailScreen
 import com.smriti.app.ui.TimelineScreen
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.smriti.app.ai.Enricher
 import com.smriti.app.ai.NpuProbe
 import com.smriti.app.capture.AsrSelfTest
 import com.smriti.app.ui.theme.SmritiTheme
@@ -77,6 +78,9 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra(AsrSelfTest.EXTRA, false) == true) {
             AsrSelfTest.run(this, lifecycleScope)
         }
+
+        Enricher.request(this)
+
         setContent {
             SmritiTheme {
                 SmritiApp()

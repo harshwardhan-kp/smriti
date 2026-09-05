@@ -43,4 +43,19 @@ interface RecordDao {
 
     @Query("UPDATE records SET embedding = :embedding WHERE id = :id")
     suspend fun setEmbedding(id: Long, embedding: ByteArray?)
+
+    @Query("SELECT * FROM records WHERE enrichmentState = 'PENDING' AND enrichmentAttempts < 3 ORDER BY createdAt ASC")
+    suspend fun pendingEnrichment(): List<RecordEntity>
+
+    @Query("UPDATE records SET enrichmentState = :state, enrichmentAttempts = enrichmentAttempts + :attemptDelta, enrichmentError = :error WHERE id = :id")
+    suspend fun markEnrichment(id: Long, state: String, attemptDelta: Int, error: String?)
+
+    @Query("UPDATE records SET ocrText = :ocr WHERE id = :id")
+    suspend fun setOcrText(id: Long, ocr: String)
+
+    @Query("UPDATE records SET title = :title, summary = :summary, peopleJson = :people, amountsJson = :amounts, tagsJson = :tags, embedding = :embedding, ocrText = :ocr, enrichmentState = 'DONE', enrichedAt = :at, enrichmentModel = :model, enrichmentError = NULL WHERE id = :id")
+    suspend fun applyEnrichment(id: Long, title: String, summary: String, people: String, amounts: String, tags: String, embedding: ByteArray?, ocr: String, at: Long, model: String)
+
+    @Query("SELECT COUNT(*) FROM records WHERE enrichmentState = 'PENDING'")
+    suspend fun pendingCount(): Int
 }

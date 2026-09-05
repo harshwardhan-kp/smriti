@@ -5,10 +5,12 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [RecordEntity::class, TaskEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -17,6 +19,16 @@ abstract class SmritiDb : RoomDatabase() {
     abstract fun recordDao(): RecordDao
 
     companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE records ADD COLUMN enrichmentState TEXT NOT NULL DEFAULT 'DONE'")
+                db.execSQL("ALTER TABLE records ADD COLUMN enrichmentAttempts INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE records ADD COLUMN enrichedAt INTEGER")
+                db.execSQL("ALTER TABLE records ADD COLUMN enrichmentModel TEXT")
+                db.execSQL("ALTER TABLE records ADD COLUMN enrichmentError TEXT")
+            }
+        }
+
         @Volatile
         private var INSTANCE: SmritiDb? = null
 
@@ -26,7 +38,8 @@ abstract class SmritiDb : RoomDatabase() {
                     context.applicationContext,
                     SmritiDb::class.java,
                     "smriti.db"
-                ).build()
+                ).addMigrations(MIGRATION_1_2)
+                .build()
                 INSTANCE = instance
                 instance
             }
