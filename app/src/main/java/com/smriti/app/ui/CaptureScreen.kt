@@ -20,11 +20,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,18 +38,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.smriti.app.capture.CaptureStage
-
-private val ColorAmber = Color(0xFFF2B705)
-private val ColorInk = Color(0xFF0B0B0B)
-private val ColorCream = Color(0xFFFBF8F1)
-private val ColorRedAlert = Color(0xFFE53935)
+import com.smriti.app.ui.components.BracketLabel
+import com.smriti.app.ui.components.BracketLabelLive
+import com.smriti.app.ui.theme.S
+import com.smriti.app.ui.theme.SmritiType
 
 @Composable
 fun CaptureScreen(
@@ -85,7 +79,7 @@ fun CaptureScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ColorInk)
+            .background(S.InkDeep)
     ) {
         AndroidView(
             factory = { ctx ->
@@ -105,50 +99,40 @@ fun CaptureScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = S.gutter, vertical = S.sm),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(onClick = onOpenAsk) {
                 Text(
-                    text = "Ask",
-                    color = ColorCream,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    text = "ask",
+                    style = SmritiType.Button,
+                    color = S.OnDark
                 )
             }
 
-            Surface(
-                shape = RoundedCornerShape(percent = 50),
-                color = ColorInk.copy(alpha = 0.75f),
-                border = BorderStroke(1.dp, ColorAmber.copy(alpha = 0.6f))
-            ) {
-                Text(
-                    text = BuildBadge.label,
-                    color = ColorAmber,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
-            }
+            BracketLabel(
+                text = BuildBadge.label,
+                labelColor = S.OnDark.copy(alpha = 0.65f),
+                bracketColor = S.Red
+            )
 
             TextButton(onClick = onOpenTimeline) {
                 Text(
-                    text = "Timeline",
-                    color = ColorCream,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    text = "timeline",
+                    style = SmritiType.Button,
+                    color = S.OnDark
                 )
             }
         }
 
         stage?.let { currentStage ->
             val statusText = when (currentStage) {
-                is CaptureStage.Photo -> "Capturing"
-                is CaptureStage.Reading -> "Reading the image"
-                is CaptureStage.Listening -> "Listening"
-                is CaptureStage.Thinking -> "Understanding, on this phone"
-                is CaptureStage.Done -> "Saved"
+                is CaptureStage.Photo -> "capturing"
+                is CaptureStage.Reading -> "reading the image"
+                is CaptureStage.Listening -> "listening"
+                is CaptureStage.Thinking -> "understanding, on this phone"
+                is CaptureStage.Done -> "saved"
                 is CaptureStage.Failed -> currentStage.reason
             }
             val isFailed = currentStage is CaptureStage.Failed
@@ -158,17 +142,14 @@ fun CaptureScreen(
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
                     .padding(top = 64.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = ColorInk.copy(alpha = 0.85f),
-                border = BorderStroke(1.dp, if (isFailed) ColorRedAlert else ColorAmber.copy(alpha = 0.5f))
+                shape = S.r6,
+                color = S.InkDeep.copy(alpha = 0.75f),
+                border = BorderStroke(S.hairlineWidth, if (isFailed) S.Red else S.HairlineOnDark)
             ) {
-                Text(
+                BracketLabelLive(
                     text = statusText,
-                    color = if (isFailed) ColorRedAlert else ColorCream,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    textAlign = TextAlign.Center
+                    color = if (isFailed) S.Red else S.OnDark,
+                    modifier = Modifier.padding(horizontal = S.gutter, vertical = S.sm)
                 )
             }
         }
@@ -177,29 +158,28 @@ fun CaptureScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 36.dp),
+                .padding(bottom = S.xl),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val isListeningHint = isMicHeld || isShutterHeld
             Text(
                 text = when {
-                    isMicHeld -> "LISTENING — voice only, release to stop"
-                    isShutterHeld -> "LISTENING — release to stop"
-                    else -> "Tap for a photo · Hold to add your voice · Hold the mic for voice only"
+                    isMicHeld -> "listening — voice only, release to stop"
+                    isShutterHeld -> "listening — release to stop"
+                    else -> "tap for a photo · hold to add voice · hold the mic for voice only"
                 },
-                color = if (isListeningHint) ColorRedAlert else ColorCream,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (isListeningHint) FontWeight.Bold else FontWeight.Normal,
+                color = if (isListeningHint) S.Red else S.OnDark.copy(alpha = 0.65f),
+                style = if (isListeningHint) SmritiType.MetaMedium else SmritiType.Meta,
                 modifier = Modifier
-                    .background(ColorInk.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .background(S.InkDeep.copy(alpha = 0.6f), S.r6)
+                    .padding(horizontal = S.md, vertical = S.xs)
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(S.gutter))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = Arrangement.spacedBy(S.lg, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -208,11 +188,11 @@ fun CaptureScreen(
                         .size(56.dp)
                         .border(
                             width = if (isMicHeld) 4.dp else 2.dp,
-                            color = if (isMicHeld) ColorRedAlert else ColorCream.copy(alpha = 0.7f),
+                            color = if (isMicHeld) S.Red else S.OnDark.copy(alpha = 0.7f),
                             shape = CircleShape
                         )
                         .background(
-                            color = if (isMicHeld) ColorRedAlert.copy(alpha = 0.15f) else Color.Transparent,
+                            color = if (isMicHeld) S.RedTint else Color.Transparent,
                             shape = CircleShape
                         )
                         .pointerInput(Unit) {
@@ -236,24 +216,22 @@ fun CaptureScreen(
                     Icon(
                         imageVector = Icons.Default.Mic,
                         contentDescription = "Record voice only",
-                        tint = ColorCream
+                        tint = if (isMicHeld) S.Red else S.OnDark
                     )
                 }
-
-                Spacer(modifier = Modifier.width(24.dp))
 
                 Box(
                     modifier = Modifier
                         .size(84.dp)
                         .then(
                             if (isShutterListening) {
-                                Modifier.border(4.dp, ColorRedAlert, CircleShape)
+                                Modifier.border(4.dp, S.Red, CircleShape)
                             } else {
                                 Modifier
                             }
                         )
                         .padding(if (isShutterListening) 6.dp else 0.dp)
-                        .background(ColorAmber, CircleShape)
+                        .background(S.White, CircleShape)
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onPress = {
@@ -280,8 +258,10 @@ fun CaptureScreen(
                         }
                 )
 
-                Spacer(modifier = Modifier.width(24.dp))
-
+                // Balances the mic on the left so the shutter sits on the screen's centre line.
+                // Arrangement.spacedBy already contributes the S.lg gap on both sides, so this
+                // spacer matches the mic's width alone — adding the gap again would push the
+                // shutter S.lg to the left of centre.
                 Spacer(modifier = Modifier.width(56.dp))
             }
         }
