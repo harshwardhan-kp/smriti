@@ -45,9 +45,13 @@ import com.smriti.app.ai.Enricher
 import android.content.Intent
 import com.smriti.app.ai.NpuProbe
 import com.smriti.app.capture.AsrSelfTest
+import com.smriti.app.capture.BubbleService
 import com.smriti.app.capture.ScreenCaptureConsentActivity
 import com.smriti.app.capture.ScreenCaptureService
 import com.smriti.app.ui.theme.SmritiTheme
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,6 +94,14 @@ class MainActivity : ComponentActivity() {
             ScreenCaptureService.capture(this)
         }
 
+        if (intent?.getBooleanExtra("smriti_bubble", false) == true) {
+            handleStartBubble()
+        }
+
+        if (intent?.getBooleanExtra("smriti_bubble_off", false) == true) {
+            BubbleService.stop(this)
+        }
+
         Enricher.request(this)
 
         setContent {
@@ -110,6 +122,31 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra("smriti_screengrab", false)) {
             ScreenCaptureService.capture(this)
         }
+
+        if (intent.getBooleanExtra("smriti_bubble", false)) {
+            handleStartBubble()
+        }
+
+        if (intent.getBooleanExtra("smriti_bubble_off", false)) {
+            BubbleService.stop(this)
+        }
+    }
+
+    private fun handleStartBubble() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            val overlayIntent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            startActivity(overlayIntent)
+            return
+        }
+
+        if (!ScreenCaptureService.isArmed()) {
+            startActivity(Intent(this, ScreenCaptureConsentActivity::class.java))
+        }
+
+        BubbleService.start(this)
     }
 }
 
