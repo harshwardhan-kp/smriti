@@ -49,6 +49,10 @@ object LiteRtLmHolder {
                 var lastError: Throwable? = null
                 for ((name, createBackend) in targets) {
                     Log.i(TAG, "ATTEMPT $name")
+                    // A clean NPU init is not proof of an NPU run: with no dispatch library the
+                    // runtime falls back to XNNPack and says nothing. Watch the log across the
+                    // attempt so the claim can be checked rather than assumed.
+                    val watch = if (name == "NPU") NpuDispatchCheck.mark() else null
                     var engine: Engine? = null
                     try {
                         val nativeBackend = createBackend()
@@ -57,6 +61,18 @@ object LiteRtLmHolder {
                         val initStart = System.currentTimeMillis()
                         engine.initialize()
                         val initMs = System.currentTimeMillis() - initStart
+
+                        val hollow = watch?.let { NpuDispatchCheck.failureReason(nativeLibDir, it) }
+                        if (hollow != null) {
+                            // Initialised, but on the CPU. Treat it as a failed rung: this model
+                            // would run anyway and be labelled a lie.
+                            Log.w(TAG, "RESULT $name: FAILED dispatch never loaded ($hollow) — " +
+                                "the engine came up on XNNPack/CPU, not the NPU")
+                            lastError = IllegalStateException("NPU dispatch unavailable: $hollow")
+                            closeQuietly(engine, name)
+                            continue
+                        }
+
                         Log.i(TAG, "RESULT $name: OK (${initMs}ms)")
 
                         val label = "$name · ${model.label}"
@@ -66,16 +82,20 @@ object LiteRtLmHolder {
                     } catch (t: Throwable) {
                         Log.w(TAG, "RESULT $name: FAILED ${t.javaClass.simpleName}: ${t.message}")
                         lastError = t
-                        try {
-                            engine?.close()
-                        } catch (closeEx: Throwable) {
-                            Log.w(TAG, "Failed to close engine for $name: ${closeEx.message}")
-                        }
+                        closeQuietly(engine, name)
                     }
                 }
 
                 Result.failure(lastError ?: IllegalStateException("All LiteRT-LM backends failed"))
             }
+        }
+    }
+
+    private fun closeQuietly(engine: Engine?, name: String) {
+        try {
+            engine?.close()
+        } catch (closeEx: Throwable) {
+            Log.w(TAG, "Failed to close engine for $name: ${closeEx.message}")
         }
     }
 
