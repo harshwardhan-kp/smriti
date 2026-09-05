@@ -6,7 +6,6 @@ import com.smriti.app.ai.BackendFactory
 import com.smriti.app.ai.Embedder
 import com.smriti.app.ai.EmbedderHolder
 import com.smriti.app.ai.Extractor
-import com.smriti.app.ai.Ocr
 import com.smriti.app.ai.StructuredRecord
 import com.smriti.app.data.Converters
 import com.smriti.app.data.RecordDao
@@ -15,14 +14,13 @@ import java.time.LocalDate
 import java.time.ZoneId
 import com.smriti.app.data.RecordEntity
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 
 sealed interface CaptureStage {
     data object Photo : CaptureStage
+    // Retained for compatibility; no longer emitted.
     data object Reading : CaptureStage
     data object Listening : CaptureStage
     data object Thinking : CaptureStage
@@ -42,23 +40,12 @@ class CapturePipeline(
             emit(CaptureStage.Photo)
             val photoFile = camera.capture()
 
-            emit(CaptureStage.Reading)
             if (withVoice) {
                 emit(CaptureStage.Listening)
             }
 
-            val (ocrText, transcript) = coroutineScope {
-                val ocrDeferred = async { Ocr.read(photoFile, context) }
-                val asrDeferred = async {
-                    if (withVoice) {
-                        asr.transcribe()
-                    } else {
-                        ""
-                    }
-                }
-
-                Pair(ocrDeferred.await(), asrDeferred.await())
-            }
+            val transcript = if (withVoice) asr.transcribe() else ""
+            val ocrText = ""
 
             emit(CaptureStage.Thinking)
 
