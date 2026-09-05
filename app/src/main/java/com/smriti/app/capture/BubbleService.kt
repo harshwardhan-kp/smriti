@@ -209,7 +209,7 @@ class BubbleService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Smriti capture bubble")
-            .setContentText("Hold the amber bubble to capture the screen · hold the red one for a voice note")
+            .setContentText("hold the light bubble for the screen · hold the dark one for a voice note")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -261,32 +261,28 @@ class BubbleService : Service() {
         bubbleSizeLive = (72 * density).toInt()
         micBubbleSize = (44 * density).toInt()
 
-        // Amber colors matching theme (0xFFF2B705)
         normalDrawable = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(0xCCF2B705.toInt()) // Translucent circular amber
-            setStroke((2 * density).toInt(), 0x66FFFFFF.toInt())
+            setColor(0xE6EEEEEE.toInt())                       // S.Paper at 90%
+            setStroke((2 * density).toInt(), 0xFFE10909.toInt()) // S.Red
         }
 
         liveDrawable = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(0xFFF2B705.toInt()) // Vivid bright amber
-            setStroke((4 * density).toInt(), 0xFFE53935.toInt()) // Red recording alert ring
+            setColor(0xFFE10909.toInt())                       // S.Red
+            setStroke((4 * density).toInt(), 0xFFEEEEEE.toInt()) // S.Paper
         }
 
-        // Mic bubble drawables:
-        // idle: OVAL, translucent ink 0xCC0B0B0B, 2.dp stroke in amber 0x99F2B705
-        // live: OVAL, solid red 0xFFE53935, 4.dp stroke in cream 0xFFFBF8F1
         micNormalDrawable = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(0xCC0B0B0B.toInt())
-            setStroke((2 * density).toInt(), 0x99F2B705.toInt())
+            setColor(0xE60D0D0D.toInt())                        // S.Ink at 90%
+            setStroke((2 * density).toInt(), 0xFFEEEEEE.toInt()) // S.Paper
         }
 
         micLiveDrawable = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(0xFFE53935.toInt())
-            setStroke((4 * density).toInt(), 0xFFFBF8F1.toInt())
+            setColor(0xFFE10909.toInt())                        // S.Red
+            setStroke((4 * density).toInt(), 0xFFEEEEEE.toInt()) // S.Paper
         }
 
         val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

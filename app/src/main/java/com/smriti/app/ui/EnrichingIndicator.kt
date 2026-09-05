@@ -13,19 +13,19 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.smriti.app.ui.theme.ColorAmber
-import com.smriti.app.ui.theme.Cream
+import com.smriti.app.ui.theme.S
 
 @Composable
 private fun isReducedMotionEnabled(): Boolean {
@@ -43,11 +43,11 @@ private fun isReducedMotionEnabled(): Boolean {
 }
 
 /**
- * Three small circles drawn on a Compose Canvas, in the existing amber theme colour.
- * Animate with rememberInfiniteTransition: each dot's alpha and radius eases up and back down,
+ * Three small rounded squares drawn on a Compose Canvas, in S.Amber.
+ * Animate with rememberInfiniteTransition: each square's alpha and size eases up and back down,
  * staggered so the pulse travels left to right, roughly 1200 ms for the full cycle with about
  * 160 ms offset per dot. Uses FastOutSlowInEasing.
- * Total footprint about 26.dp wide, 8.dp tall.
+ * Total footprint about 26.dp wide, 6.dp tall.
  */
 @Composable
 fun ThinkingDots(modifier: Modifier = Modifier) {
@@ -105,15 +105,15 @@ fun ThinkingDots(modifier: Modifier = Modifier) {
     )
 
     Canvas(
-        modifier = modifier.size(width = 26.dp, height = 8.dp)
+        modifier = modifier.size(width = 26.dp, height = 6.dp)
     ) {
         val centerY = size.height / 2f
         val dot0X = 4.5.dp.toPx()
         val dot1X = 13.dp.toPx()
         val dot2X = 21.5.dp.toPx()
 
-        val minRadius = 1.75.dp.toPx()
-        val maxRadius = 3.25.dp.toPx()
+        val minSize = 3.5.dp.toPx()
+        val maxSize = 5.dp.toPx()
         val minAlpha = 0.35f
         val maxAlpha = 1.0f
 
@@ -123,28 +123,31 @@ fun ThinkingDots(modifier: Modifier = Modifier) {
             Triple(dot0Progress, dot1Progress, dot2Progress)
         }
 
-        val r0 = minRadius + (maxRadius - minRadius) * f0
+        val s0 = minSize + (maxSize - minSize) * f0
         val a0 = minAlpha + (maxAlpha - minAlpha) * f0
-        drawCircle(
-            color = ColorAmber.copy(alpha = a0),
-            radius = r0,
-            center = Offset(dot0X, centerY)
+        drawRoundRect(
+            color = S.Amber.copy(alpha = a0),
+            topLeft = Offset(dot0X - s0 / 2f, centerY - s0 / 2f),
+            size = Size(s0, s0),
+            cornerRadius = CornerRadius(2.dp.toPx())
         )
 
-        val r1 = minRadius + (maxRadius - minRadius) * f1
+        val s1 = minSize + (maxSize - minSize) * f1
         val a1 = minAlpha + (maxAlpha - minAlpha) * f1
-        drawCircle(
-            color = ColorAmber.copy(alpha = a1),
-            radius = r1,
-            center = Offset(dot1X, centerY)
+        drawRoundRect(
+            color = S.Amber.copy(alpha = a1),
+            topLeft = Offset(dot1X - s1 / 2f, centerY - s1 / 2f),
+            size = Size(s1, s1),
+            cornerRadius = CornerRadius(2.dp.toPx())
         )
 
-        val r2 = minRadius + (maxRadius - minRadius) * f2
+        val s2 = minSize + (maxSize - minSize) * f2
         val a2 = minAlpha + (maxAlpha - minAlpha) * f2
-        drawCircle(
-            color = ColorAmber.copy(alpha = a2),
-            radius = r2,
-            center = Offset(dot2X, centerY)
+        drawRoundRect(
+            color = S.Amber.copy(alpha = a2),
+            topLeft = Offset(dot2X - s2 / 2f, centerY - s2 / 2f),
+            size = Size(s2, s2),
+            cornerRadius = CornerRadius(2.dp.toPx())
         )
     }
 }
@@ -153,8 +156,7 @@ fun ThinkingDots(modifier: Modifier = Modifier) {
  * A skeleton placeholder for the summary text that has not arrived yet: a rounded rect,
  * about 11.dp tall, filled with a horizontal Brush.linearGradient that sweeps across it
  * continuously (translates the gradient's start/end X with an infinite transition, roughly
- * 1400 ms per sweep). Base colour is the existing surface/muted colour and the moving band is
- * a lighter tint of it -- subtle, not a flashy highlight.
+ * 1400 ms per sweep). Sweeps between S.PaperSunk and S.Hairline.copy(alpha = 0.9f).
  */
 @Composable
 fun ShimmerLine(
@@ -173,17 +175,17 @@ fun ShimmerLine(
         label = "shimmerProgress"
     )
 
-    val surfaceColor = MaterialTheme.colorScheme.surface
-    val baseColor = lerp(surfaceColor, Cream, 0.06f)
-    val highlightColor = lerp(surfaceColor, Cream, 0.16f)
+    val baseColor = S.PaperSunk
+    val highlightColor = S.Hairline.copy(alpha = 0.9f)
 
     Canvas(
         modifier = modifier
             .fillMaxWidth(widthFraction)
             .height(11.dp)
+            .clip(RoundedCornerShape(2.dp))
     ) {
         val width = size.width
-        val cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+        val cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
 
         if (isReducedMotion || width <= 0f) {
             drawRoundRect(

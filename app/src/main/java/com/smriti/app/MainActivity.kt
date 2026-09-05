@@ -9,14 +9,15 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -29,9 +30,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.smriti.app.ui.components.BracketLabel
+import com.smriti.app.ui.components.DisplayHeading
+import com.smriti.app.ui.components.SmritiButton
+import com.smriti.app.ui.theme.S
+import com.smriti.app.ui.theme.SmritiType
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -239,29 +244,35 @@ fun PermissionGate(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
-            contentAlignment = Alignment.Center
+                .background(S.Paper)
+                .padding(horizontal = S.gutter)
+                .padding(top = S.section),
+            contentAlignment = Alignment.TopStart
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "Permissions Required",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground
+            Column {
+                DisplayHeading(
+                    text = "smriti needs two things",
+                    italicWord = "two",
+                    style = SmritiType.Display,
+                    color = S.Ink
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(S.md))
                 Text(
-                    text = "Smriti needs access to your Camera and Microphone to capture visual and audio work logs offline.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onBackground
+                    text = "the camera, to read what is in front of you. the microphone, to hear what you say. nothing leaves this phone.",
+                    style = SmritiType.Body,
+                    color = S.Muted
                 )
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = { launcher.launch(requiredPermissions) }) {
-                    Text("Grant Permissions")
+                Spacer(modifier = Modifier.height(S.lg))
+                Row(horizontalArrangement = Arrangement.spacedBy(S.md)) {
+                    BracketLabel("camera")
+                    BracketLabel("microphone")
                 }
+                Spacer(modifier = Modifier.height(S.lg))
+                SmritiButton(
+                    label = "grant",
+                    onClick = { launcher.launch(requiredPermissions) },
+                    primary = true
+                )
             }
         }
     }
