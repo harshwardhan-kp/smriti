@@ -2,7 +2,6 @@ package com.smriti.app.ui
 
 import android.app.Application
 import android.graphics.BitmapFactory
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,23 +13,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -50,9 +40,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -65,17 +52,19 @@ import com.smriti.app.capture.AsrFactory
 import com.smriti.app.data.Converters
 import com.smriti.app.data.RecordDao
 import com.smriti.app.data.SmritiDb
+import com.smriti.app.ui.components.BracketLabelLive
+import com.smriti.app.ui.components.DisplayHeading
+import com.smriti.app.ui.components.HairlineRule
+import com.smriti.app.ui.components.SectionLabel
+import com.smriti.app.ui.components.SmritiButton
+import com.smriti.app.ui.theme.S
+import com.smriti.app.ui.theme.SmritiType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-private val ColorAmber = Color(0xFFF2B705)
-private val ColorInk = Color(0xFF0B0B0B)
-private val ColorCream = Color(0xFFFBF8F1)
-private val ColorCardBg = Color(0xFF181818)
 
 class AskViewModel(app: Application) : AndroidViewModel(app) {
     private val dao: RecordDao = SmritiDb.get(app).recordDao()
@@ -162,10 +151,11 @@ fun AskScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Ask Smriti",
-                        color = ColorCream,
-                        fontWeight = FontWeight.Bold
+                    DisplayHeading(
+                        text = "ask",
+                        italicWord = "ask",
+                        style = SmritiType.DisplaySmall,
+                        color = S.Ink
                     )
                 },
                 navigationIcon = {
@@ -173,30 +163,37 @@ fun AskScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = ColorCream
+                            tint = S.Ink
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = ColorInk)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = S.Paper,
+                    titleContentColor = S.Ink,
+                    navigationIconContentColor = S.Ink
+                )
             )
         },
-        containerColor = ColorInk
+        containerColor = S.Paper
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(horizontal = S.gutter)
         ) {
+            Spacer(modifier = Modifier.height(S.gutter))
+
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = {
                     Text(
-                        text = "What did I commit to this week?",
-                        color = ColorCream.copy(alpha = 0.5f)
+                        text = "what did i commit to this week?",
+                        style = SmritiType.Body,
+                        color = S.MutedSoft
                     )
                 },
                 trailingIcon = {
@@ -204,103 +201,66 @@ fun AskScreen(
                         Icon(
                             imageVector = Icons.Default.Mic,
                             contentDescription = "Voice input",
-                            tint = ColorAmber
+                            tint = S.Muted
                         )
                     }
                 },
-                shape = RoundedCornerShape(12.dp),
+                shape = S.r6,
+                textStyle = SmritiType.Body,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = ColorCream,
-                    unfocusedTextColor = ColorCream,
-                    focusedBorderColor = ColorAmber,
-                    unfocusedBorderColor = Color(0xFF333333),
-                    cursorColor = ColorAmber
+                    focusedTextColor = S.Ink,
+                    unfocusedTextColor = S.Ink,
+                    focusedBorderColor = S.Red,
+                    unfocusedBorderColor = S.Hairline,
+                    cursorColor = S.Red,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
                 ),
                 singleLine = false,
                 maxLines = 3
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(S.md))
 
-            Button(
+            SmritiButton(
+                label = "ask",
                 onClick = { vm.ask(query) },
+                primary = true,
                 enabled = !busy && query.isNotBlank(),
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = ColorAmber,
-                    contentColor = ColorInk,
-                    disabledContainerColor = ColorAmber.copy(alpha = 0.3f),
-                    disabledContentColor = ColorInk.copy(alpha = 0.5f)
-                )
-            ) {
-                Text(
-                    text = "ASK",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-            }
+                modifier = Modifier.fillMaxWidth()
+            )
 
             if (busy) {
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(S.lg))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(S.sm)
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = ColorAmber,
-                        strokeWidth = 2.5.dp
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Thinking on this device",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ColorAmber,
-                        fontWeight = FontWeight.Medium
-                    )
+                    ThinkingDots()
+                    BracketLabelLive("thinking")
                 }
             }
 
             answer?.let { ans ->
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(S.lg))
+                HairlineRule()
+                Spacer(modifier = Modifier.height(S.lg))
 
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = ColorCardBg),
-                    border = BorderStroke(1.dp, ColorAmber.copy(alpha = 0.35f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Text(
-                            text = "Answer",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = ColorAmber,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = ans.answer,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = ColorCream,
-                            lineHeight = 24.sp
-                        )
-                    }
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SectionLabel("answer")
+                    Spacer(modifier = Modifier.height(S.sm))
+                    Text(
+                        text = ans.answer,
+                        style = SmritiType.Body,
+                        color = S.Ink
+                    )
                 }
 
                 if (ans.evidencePhotoPath != null) {
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Text(
-                        text = "Evidence",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorAmber
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(S.lg))
+                    SectionLabel("evidence")
+                    Spacer(modifier = Modifier.height(S.sm))
 
                     val evidenceBitmap: ImageBitmap? = remember(ans.evidencePhotoPath) {
                         try {
@@ -323,39 +283,38 @@ fun AskScreen(
                         }
                     }
 
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = ColorCardBg),
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
                                 ans.evidenceRecordId?.let { onOpenRecord(it) }
                             }
+                            .padding(vertical = S.gutter)
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            if (evidenceBitmap != null) {
-                                Image(
-                                    bitmap = evidenceBitmap,
-                                    contentDescription = "Evidence Photo",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(4f / 3f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Tap to view full record",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ColorCream.copy(alpha = 0.6f)
+                        if (evidenceBitmap != null) {
+                            Image(
+                                bitmap = evidenceBitmap,
+                                contentDescription = "Evidence Photo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(4f / 3f)
+                                    .clip(S.r6)
                             )
+                            Spacer(modifier = Modifier.height(S.sm))
                         }
+                        Text(
+                            text = "tap to view full record",
+                            style = SmritiType.BodySmall,
+                            color = S.Muted
+                        )
+                        Spacer(modifier = Modifier.height(S.gutter))
+                        HairlineRule()
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(S.section))
         }
     }
 }
