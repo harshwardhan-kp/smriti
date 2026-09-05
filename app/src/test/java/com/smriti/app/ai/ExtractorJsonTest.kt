@@ -3,8 +3,10 @@ package com.smriti.app.ai
 import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 class ExtractorJsonTest {
 
@@ -131,5 +133,43 @@ class ExtractorJsonTest {
         val record = extractor.parseForTest(input)
         assertNotNull(record)
         assertEquals("Sprint Delivery", record!!.title)
+    }
+
+    @Test
+    fun testDueDateResolverPinnedCases() {
+        val today = LocalDate.of(2026, 9, 5) // a Saturday
+
+        // - resolve("Ships API", "Rohit ships the API by Friday", "2026-09-09", today) == "2026-09-11"
+        assertEquals(
+            "2026-09-11",
+            DueDateResolver.resolve("Ships API", "Rohit ships the API by Friday", "2026-09-09", today)
+        )
+
+        // - resolve("Order 200 units from Sharma Traders", "we need two hundred more units", "2026-09-09", today) == null
+        assertNull(
+            DueDateResolver.resolve("Order 200 units from Sharma Traders", "we need two hundred more units", "2026-09-09", today)
+        )
+
+        // - resolve("call back", "call him tomorrow", null, today) == "2026-09-06"
+        assertEquals(
+            "2026-09-06",
+            DueDateResolver.resolve("call back", "call him tomorrow", null, today)
+        )
+
+        // - resolve("pay rent", "pay the rent", "2026-09-11", today) == null // no temporal words
+        assertNull(
+            DueDateResolver.resolve("pay rent", "pay the rent", "2026-09-11", today)
+        )
+
+        // - resolve("ship it", "ship it by 2077-01-01", "2077-01-01", today) == null // out of range
+        assertNull(
+            DueDateResolver.resolve("ship it", "ship it by 2077-01-01", "2077-01-01", today)
+        )
+
+        // - a weekday that is today: resolve("x","do it saturday","2026-09-05",today) == "2026-09-12"
+        assertEquals(
+            "2026-09-12",
+            DueDateResolver.resolve("x", "do it saturday", "2026-09-05", today)
+        )
     }
 }

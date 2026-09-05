@@ -47,7 +47,7 @@ class Extractor(private val backend: LlmBackend? = null) {
             if (BuildConfig.DEBUG) {
                 response1.lines().forEach { Log.i(TAG, it) }
             }
-            val record1 = parseJson(response1)
+            val record1 = parseJson(response1, transcript)
             if (BuildConfig.DEBUG) {
                 if (record1 != null) {
                     Log.i(TAG, "parseJson returned record, actions.size = ${record1.actions.size}")
@@ -81,7 +81,7 @@ class Extractor(private val backend: LlmBackend? = null) {
         if (BuildConfig.DEBUG) {
             response2.lines().forEach { Log.i(TAG, it) }
         }
-        val record2 = parseJson(response2)
+        val record2 = parseJson(response2, transcript)
         if (BuildConfig.DEBUG) {
             if (record2 != null) {
                 Log.i(TAG, "parseJson returned record, actions.size = ${record2.actions.size}")
@@ -122,6 +122,7 @@ class Extractor(private val backend: LlmBackend? = null) {
             Extract actions first. Today's date is $today.
             Reply with a single JSON object only. Every key is required - never omit one; use [] or "" when empty.
             Title at most 8 words.
+            due must be null unless the person actually stated a day or date; never guess one.
 
             Exact schema:
             {"actions":[{"text":"","due":"YYYY-MM-DD or null"}],"title":"","summary":"","people":[],"amounts":[{"value":0,"currency":"INR","label":""}],"tags":[]}
@@ -192,7 +193,8 @@ class Extractor(private val backend: LlmBackend? = null) {
     /**
      * Exists solely so the lenient parser can be regression-tested against real model output.
      */
-    internal fun parseForTest(raw: String): StructuredRecord? = parseJson(raw)
+    internal fun parseForTest(raw: String, transcript: String = raw): StructuredRecord? =
+        parseJson(raw, transcript)
 
     /**
      * Lenient parse. Strict POJO binding is the wrong tool here.
@@ -206,7 +208,7 @@ class Extractor(private val backend: LlmBackend? = null) {
      * key aliases, accept an array of strings where objects were asked for, and only fall back
      * when there is genuinely nothing usable.
      */
-    private fun parseJson(raw: String): StructuredRecord? {
+    private fun parseJson(raw: String, transcript: String = ""): StructuredRecord? {
         val repaired = repairJson(raw)
         if (repaired.isBlank()) return null
 
@@ -243,7 +245,11 @@ class Extractor(private val backend: LlmBackend? = null) {
             else el.asJsonArray.mapNotNull { item ->
                 when {
                     // "ship the API by Friday"
-                    item.isJsonPrimitive -> Action(item.asString.trim(), null)
+                    item.isJsonPrimitive -> {
+                        val text = item.asString.trim()
+                        val due = DueDateResolver.resolve(text, transcript, null, LocalDate.now())
+                        text.takeIf { it.isNotBlank() }?.let { Action(it, due) }
+                    }
                     // {"text": "...", "due": "2026-09-04"}
                     item.isJsonObject -> {
                         val o = item.asJsonObject
@@ -252,8 +258,9 @@ class Extractor(private val backend: LlmBackend? = null) {
                                 ?.value?.takeIf { it.isJsonPrimitive }?.asString?.trim()
                         }
                         val text = pick("text", "task", "action", "item", "description")
-                        val due = pick("due", "dueDate", "due_date", "date", "deadline")
+                        val rawDue = pick("due", "dueDate", "due_date", "date", "deadline")
                             ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+                        val due = text?.let { DueDateResolver.resolve(it, transcript, rawDue, LocalDate.now()) }
                         text?.takeIf { it.isNotBlank() }?.let { Action(it, due) }
                     }
                     else -> null
