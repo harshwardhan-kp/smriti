@@ -2,9 +2,7 @@ package com.smriti.app.ui
 
 import android.app.Application
 import android.graphics.BitmapFactory
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,13 +16,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -32,25 +28,16 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -69,11 +56,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -84,18 +71,26 @@ import com.smriti.app.data.RecordDao
 import com.smriti.app.data.RecordEntity
 import com.smriti.app.data.SmritiDb
 import com.smriti.app.data.TaskEntity
+import com.smriti.app.ui.components.BracketLabel
+import com.smriti.app.ui.components.ChipKind
+import com.smriti.app.ui.components.DashedRule
+import com.smriti.app.ui.components.DisplayHeading
+import com.smriti.app.ui.components.HairlineRule
+import com.smriti.app.ui.components.NodeSquare
+import com.smriti.app.ui.components.SectionLabel
+import com.smriti.app.ui.components.SmritiChip
+import com.smriti.app.ui.components.SmritiOutlineButton
+import com.smriti.app.ui.theme.S
+import com.smriti.app.ui.theme.SmritiType
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-
-private val ColorAmber = Color(0xFFF2B705)
-private val ColorInk = Color(0xFF0B0B0B)
-private val ColorCream = Color(0xFFFBF8F1)
-private val ColorCardBg = Color(0xFF181818)
-private val ColorChipBg = Color(0xFF222222)
 
 data class TaskDraft(val id: Long = 0L, val text: String, val done: Boolean)
 
@@ -223,21 +218,40 @@ private fun parseStringList(json: String): List<String> {
     }
 }
 
+private fun formatRelativeTime(createdAt: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - createdAt
+    if (diff < 0L) return "just now"
+    val seconds = diff / 1000L
+    val minutes = seconds / 60L
+    val hours = minutes / 60L
+    val days = hours / 24L
+    return when {
+        seconds < 60L -> "just now"
+        minutes == 1L -> "1 minute ago"
+        minutes < 60L -> "$minutes minutes ago"
+        hours == 1L -> "1 hour ago"
+        hours < 24L -> "$hours hours ago"
+        days == 1L -> "yesterday"
+        days < 30L -> "$days days ago"
+        else -> {
+            val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+            sdf.format(Date(createdAt))
+        }
+    }
+}
+
 private val editorTextFieldColors
     @Composable
     get() = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = ColorCream,
-        unfocusedTextColor = ColorCream,
-        focusedBorderColor = ColorAmber,
-        unfocusedBorderColor = ColorCream.copy(alpha = 0.3f),
-        cursorColor = ColorAmber,
+        focusedTextColor = S.Ink,
+        unfocusedTextColor = S.Ink,
+        focusedBorderColor = S.Red,
+        unfocusedBorderColor = S.Hairline,
+        cursorColor = S.Red,
         focusedContainerColor = Color.Transparent,
-        unfocusedContainerColor = Color.Transparent,
-        focusedPlaceholderColor = ColorCream.copy(alpha = 0.4f),
-        unfocusedPlaceholderColor = ColorCream.copy(alpha = 0.4f)
+        unfocusedContainerColor = Color.Transparent
     )
-
-private enum class ChipStyle { PERSON, TAG, AMOUNT }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -245,7 +259,7 @@ private fun ListChipEditor(
     title: String,
     items: List<String>,
     placeholder: String,
-    style: ChipStyle,
+    kind: ChipKind,
     onAddItem: (String) -> Unit,
     onRemoveItem: (Int) -> Unit
 ) {
@@ -258,137 +272,48 @@ private fun ListChipEditor(
         inputText = ""
     }
 
-    Spacer(modifier = Modifier.height(18.dp))
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-        color = ColorAmber
-    )
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(S.lg))
+    SectionLabel(title.lowercase())
+    Spacer(modifier = Modifier.height(S.sm))
 
     if (items.isNotEmpty()) {
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(S.sm),
+            verticalArrangement = Arrangement.spacedBy(S.sm)
         ) {
             items.forEachIndexed { index, item ->
-                when (style) {
-                    ChipStyle.PERSON -> {
-                        Surface(
-                            shape = RoundedCornerShape(percent = 50),
-                            color = ColorChipBg,
-                            border = BorderStroke(1.dp, ColorCream.copy(alpha = 0.25f))
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
-                            ) {
-                                Text(
-                                    text = "@ $item",
-                                    color = ColorCream,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clickable { onRemoveItem(index) }
-                                        .padding(2.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Remove $item",
-                                        tint = ColorCream.copy(alpha = 0.7f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-                        }
+                SmritiChip(
+                    text = item,
+                    kind = kind,
+                    trailing = {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Remove $item",
+                            modifier = Modifier
+                                .size(12.dp)
+                                .clickable { onRemoveItem(index) },
+                            tint = S.MutedSoft
+                        )
                     }
-                    ChipStyle.TAG -> {
-                        Surface(
-                            shape = RoundedCornerShape(percent = 50),
-                            color = ColorAmber.copy(alpha = 0.15f),
-                            border = BorderStroke(1.dp, ColorAmber.copy(alpha = 0.4f))
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
-                            ) {
-                                Text(
-                                    text = "# $item",
-                                    color = ColorAmber,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clickable { onRemoveItem(index) }
-                                        .padding(2.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Remove $item",
-                                        tint = ColorAmber.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    ChipStyle.AMOUNT -> {
-                        Surface(
-                            shape = RoundedCornerShape(percent = 50),
-                            color = ColorCardBg,
-                            border = BorderStroke(1.dp, ColorAmber.copy(alpha = 0.35f))
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
-                            ) {
-                                Text(
-                                    text = "• ",
-                                    color = ColorAmber,
-                                    fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                                Text(
-                                    text = item,
-                                    color = ColorCream,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clickable { onRemoveItem(index) }
-                                        .padding(2.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Remove $item",
-                                        tint = ColorAmber.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                )
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(S.sm))
     }
 
     OutlinedTextField(
         value = inputText,
         onValueChange = { inputText = it },
-        placeholder = { Text(placeholder) },
+        placeholder = {
+            Text(
+                text = placeholder.lowercase(),
+                style = SmritiType.Body,
+                color = S.MutedSoft
+            )
+        },
         singleLine = true,
+        textStyle = SmritiType.Body,
+        shape = S.r6,
         colors = editorTextFieldColors,
         modifier = Modifier.fillMaxWidth(),
         trailingIcon = {
@@ -396,7 +321,7 @@ private fun ListChipEditor(
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = placeholder,
-                    tint = ColorAmber
+                    tint = S.Red
                 )
             }
         },
@@ -427,11 +352,21 @@ fun DetailScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Memory Detail",
-                        color = ColorCream,
-                        fontWeight = FontWeight.Bold
-                    )
+                    if (isEditing) {
+                        DisplayHeading(
+                            text = "editing",
+                            italicWord = "edit",
+                            style = SmritiType.DisplaySmall,
+                            color = S.Ink
+                        )
+                    } else {
+                        DisplayHeading(
+                            text = "memory",
+                            italicWord = "mem",
+                            style = SmritiType.DisplaySmall,
+                            color = S.Ink
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = {
@@ -444,7 +379,7 @@ fun DetailScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = ColorCream
+                            tint = S.Ink
                         )
                     }
                 },
@@ -457,7 +392,7 @@ fun DetailScreen(
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Discard changes",
-                                tint = ColorCream
+                                tint = S.Muted
                             )
                         }
                         IconButton(onClick = {
@@ -480,7 +415,7 @@ fun DetailScreen(
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = "Save",
-                                tint = ColorAmber
+                                tint = S.Red
                             )
                         }
                     } else {
@@ -500,16 +435,21 @@ fun DetailScreen(
                                 Icon(
                                     imageVector = Icons.Default.Edit,
                                     contentDescription = "Edit",
-                                    tint = ColorCream
+                                    tint = S.Ink
                                 )
                             }
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = ColorInk)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = S.Paper,
+                    titleContentColor = S.Ink,
+                    navigationIconContentColor = S.Ink,
+                    actionIconContentColor = S.Ink
+                )
             )
         },
-        containerColor = ColorInk
+        containerColor = S.Paper
     ) { innerPadding ->
         val currentRecord = record
         if (currentRecord == null) {
@@ -519,7 +459,7 @@ fun DetailScreen(
                     .padding(innerPadding),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = ColorAmber)
+                CircularProgressIndicator(color = S.Red)
             }
         } else {
             val photoBitmap: ImageBitmap? = remember(currentRecord.photoPath) {
@@ -541,7 +481,7 @@ fun DetailScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
+                    .padding(S.gutter)
             ) {
                 if (photoBitmap != null) {
                     Image(
@@ -551,40 +491,74 @@ fun DetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(4f / 3f)
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(S.r6)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(S.gutter))
+                } else if (currentRecord.photoPath.isBlank()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(S.md)
+                    ) {
+                        NodeSquare()
+                        BracketLabel("voice note")
+                    }
+                    Spacer(modifier = Modifier.height(S.gutter))
                 }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(S.md),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BracketLabel(formatRelativeTime(currentRecord.createdAt))
+                    currentRecord.enrichmentModel?.let { model ->
+                        BracketLabel(model)
+                    }
+                }
+                Spacer(modifier = Modifier.height(S.sm))
 
                 if (isEditing && currentDraft != null) {
                     OutlinedTextField(
                         value = currentDraft.title,
                         onValueChange = { draft = currentDraft.copy(title = it) },
-                        placeholder = { Text("Title") },
+                        placeholder = {
+                            Text(
+                                text = "title",
+                                style = SmritiType.Display,
+                                color = S.MutedSoft
+                            )
+                        },
                         singleLine = true,
-                        textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        textStyle = SmritiType.Display,
+                        shape = S.r6,
                         colors = editorTextFieldColors,
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(S.md))
 
                     OutlinedTextField(
                         value = currentDraft.summary,
                         onValueChange = { draft = currentDraft.copy(summary = it) },
-                        placeholder = { Text("Summary") },
+                        placeholder = {
+                            Text(
+                                text = "summary",
+                                style = SmritiType.Body,
+                                color = S.MutedSoft
+                            )
+                        },
                         singleLine = false,
                         minLines = 3,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 22.sp),
+                        textStyle = SmritiType.Body,
+                        shape = S.r6,
                         colors = editorTextFieldColors,
                         modifier = Modifier.fillMaxWidth()
                     )
 
                     ListChipEditor(
-                        title = "People",
+                        title = "people",
                         items = currentDraft.people,
-                        placeholder = "Add person",
-                        style = ChipStyle.PERSON,
+                        placeholder = "add person",
+                        kind = ChipKind.Person,
                         onAddItem = { item ->
                             draft = currentDraft.copy(people = currentDraft.people + item)
                         },
@@ -596,10 +570,10 @@ fun DetailScreen(
                     )
 
                     ListChipEditor(
-                        title = "Tags",
+                        title = "tags",
                         items = currentDraft.tags,
-                        placeholder = "Add tag",
-                        style = ChipStyle.TAG,
+                        placeholder = "add tag",
+                        kind = ChipKind.Tag,
                         onAddItem = { item ->
                             draft = currentDraft.copy(tags = currentDraft.tags + item)
                         },
@@ -611,10 +585,10 @@ fun DetailScreen(
                     )
 
                     ListChipEditor(
-                        title = "Amounts",
+                        title = "amounts",
                         items = currentDraft.amounts,
-                        placeholder = "Add amount",
-                        style = ChipStyle.AMOUNT,
+                        placeholder = "add amount",
+                        kind = ChipKind.Amount,
                         onAddItem = { item ->
                             draft = currentDraft.copy(amounts = currentDraft.amounts + item)
                         },
@@ -625,296 +599,222 @@ fun DetailScreen(
                         }
                     )
 
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Text(
-                        text = "Tasks",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorAmber
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = ColorCardBg),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(8.dp)) {
-                            val newTaskFocusRequester = remember { FocusRequester() }
-                            var shouldFocusNewTask by remember { mutableStateOf(false) }
+                    Spacer(modifier = Modifier.height(S.lg))
+                    SectionLabel("tasks")
+                    Spacer(modifier = Modifier.height(S.sm))
 
-                            LaunchedEffect(shouldFocusNewTask) {
-                                if (shouldFocusNewTask) {
-                                    delay(50)
-                                    try {
-                                        newTaskFocusRequester.requestFocus()
-                                    } catch (_: Exception) {}
-                                    shouldFocusNewTask = false
-                                }
-                            }
+                    val newTaskFocusRequester = remember { FocusRequester() }
+                    var shouldFocusNewTask by remember { mutableStateOf(false) }
 
-                            currentDraft.tasks.forEachIndexed { index, task ->
-                                val isLastItem = index == currentDraft.tasks.lastIndex
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Checkbox(
-                                        checked = task.done,
-                                        onCheckedChange = { done ->
-                                            val updated = currentDraft.tasks.toMutableList()
-                                            updated[index] = task.copy(done = done)
-                                            draft = currentDraft.copy(tasks = updated)
-                                        },
-                                        colors = CheckboxDefaults.colors(
-                                            checkedColor = ColorAmber,
-                                            checkmarkColor = ColorInk,
-                                            uncheckedColor = ColorCream.copy(alpha = 0.6f)
-                                        )
-                                    )
-                                    OutlinedTextField(
-                                        value = task.text,
-                                        onValueChange = { newText ->
-                                            val updated = currentDraft.tasks.toMutableList()
-                                            updated[index] = task.copy(text = newText)
-                                            draft = currentDraft.copy(tasks = updated)
-                                        },
-                                        placeholder = { Text("Task") },
-                                        singleLine = true,
-                                        colors = editorTextFieldColors,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .padding(horizontal = 4.dp)
-                                            .then(
-                                                if (isLastItem && shouldFocusNewTask) {
-                                                    Modifier.focusRequester(newTaskFocusRequester)
-                                                } else {
-                                                    Modifier
-                                                }
-                                            )
-                                    )
-                                    IconButton(
-                                        onClick = {
-                                            val removed = currentDraft.tasks[index]
-                                            val updated = currentDraft.tasks.filterIndexed { i, _ -> i != index }
-                                            val deleted = if (removed.id != 0L) {
-                                                currentDraft.deletedTasks + removed.copy(text = "")
-                                            } else {
-                                                currentDraft.deletedTasks
-                                            }
-                                            draft = currentDraft.copy(tasks = updated, deletedTasks = deleted)
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete task",
-                                            tint = ColorCream.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
-                            }
+                    LaunchedEffect(shouldFocusNewTask) {
+                        if (shouldFocusNewTask) {
+                            delay(50)
+                            try {
+                                newTaskFocusRequester.requestFocus()
+                            } catch (_: Exception) {}
+                            shouldFocusNewTask = false
+                        }
+                    }
 
-                            TextButton(
-                                onClick = {
-                                    draft = currentDraft.copy(
-                                        tasks = currentDraft.tasks + TaskDraft(id = 0L, text = "", done = false)
-                                    )
-                                    shouldFocusNewTask = true
+                    currentDraft.tasks.forEachIndexed { index, task ->
+                        val isLastItem = index == currentDraft.tasks.lastIndex
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = S.sm),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = task.done,
+                                onCheckedChange = { done ->
+                                    val updated = currentDraft.tasks.toMutableList()
+                                    updated[index] = task.copy(done = done)
+                                    draft = currentDraft.copy(tasks = updated)
                                 },
-                                colors = ButtonDefaults.textButtonColors(contentColor = ColorAmber)
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = S.Red,
+                                    checkmarkColor = S.White,
+                                    uncheckedColor = S.Hairline
+                                )
+                            )
+                            OutlinedTextField(
+                                value = task.text,
+                                onValueChange = { newText ->
+                                    val updated = currentDraft.tasks.toMutableList()
+                                    updated[index] = task.copy(text = newText)
+                                    draft = currentDraft.copy(tasks = updated)
+                                },
+                                placeholder = {
+                                    Text(
+                                        text = "task",
+                                        style = SmritiType.Body,
+                                        color = S.MutedSoft
+                                    )
+                                },
+                                singleLine = true,
+                                textStyle = SmritiType.Body,
+                                shape = S.r6,
+                                colors = editorTextFieldColors,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = S.xs)
+                                    .then(
+                                        if (isLastItem && shouldFocusNewTask) {
+                                            Modifier.focusRequester(newTaskFocusRequester)
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                            )
+                            IconButton(
+                                onClick = {
+                                    val removed = currentDraft.tasks[index]
+                                    val updated = currentDraft.tasks.filterIndexed { i, _ -> i != index }
+                                    val deleted = if (removed.id != 0L) {
+                                        currentDraft.deletedTasks + removed.copy(text = "")
+                                    } else {
+                                        currentDraft.deletedTasks
+                                    }
+                                    draft = currentDraft.copy(tasks = updated, deletedTasks = deleted)
+                                }
                             ) {
-                                Text(
-                                    text = "＋ Add task",
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = ColorAmber
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete task",
+                                    tint = S.MutedSoft
                                 )
                             }
                         }
+                        HairlineRule()
                     }
+
+                    Spacer(modifier = Modifier.height(S.sm))
+                    SmritiOutlineButton(
+                        label = "add task",
+                        onClick = {
+                            draft = currentDraft.copy(
+                                tasks = currentDraft.tasks + TaskDraft(id = 0L, text = "", done = false)
+                            )
+                            shouldFocusNewTask = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 } else {
                     Text(
-                        text = currentRecord.title.ifBlank { "Untitled" },
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorCream
+                        text = currentRecord.title.ifBlank { "untitled" },
+                        style = SmritiType.Display,
+                        color = S.Ink
                     )
 
                     when (currentRecord.enrichmentState) {
                         "PENDING", "RUNNING" -> {
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(S.sm))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(S.sm)
                             ) {
                                 ThinkingDots()
-                                Text(
-                                    text = if (currentRecord.enrichmentState == "RUNNING") "Understanding…" else "Queued",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = ColorCream.copy(alpha = 0.6f)
-                                )
+                                BracketLabel(if (currentRecord.enrichmentState == "RUNNING") "understanding" else "queued")
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(S.sm))
                             ShimmerLine(widthFraction = 0.85f)
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(S.sm))
                             ShimmerLine(widthFraction = 0.55f)
                         }
                         "FAILED" -> {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Could not extract",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ColorCream.copy(alpha = 0.6f)
-                            )
+                            Spacer(modifier = Modifier.height(S.sm))
+                            BracketLabel("could not extract")
                         }
                         else -> {
                             if (currentRecord.summary.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(S.sm))
                                 Text(
                                     text = currentRecord.summary,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = ColorCream.copy(alpha = 0.9f),
-                                    lineHeight = 22.sp
+                                    style = SmritiType.Body,
+                                    color = S.Muted
                                 )
                             }
                         }
                     }
 
                     if (people.isNotEmpty() || tags.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(S.gutter))
                         FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(S.sm),
+                            verticalArrangement = Arrangement.spacedBy(S.sm)
                         ) {
                             people.forEach { person ->
-                                Surface(
-                                    shape = RoundedCornerShape(percent = 50),
-                                    color = ColorChipBg,
-                                    border = BorderStroke(1.dp, ColorCream.copy(alpha = 0.25f))
-                                ) {
-                                    Text(
-                                        text = "@ $person",
-                                        color = ColorCream,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                    )
-                                }
+                                SmritiChip(text = person, kind = ChipKind.Person)
                             }
-
                             tags.forEach { tag ->
-                                Surface(
-                                    shape = RoundedCornerShape(percent = 50),
-                                    color = ColorAmber.copy(alpha = 0.15f),
-                                    border = BorderStroke(1.dp, ColorAmber.copy(alpha = 0.4f))
-                                ) {
-                                    Text(
-                                        text = "# $tag",
-                                        color = ColorAmber,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                    )
-                                }
+                                SmritiChip(text = tag, kind = ChipKind.Tag)
                             }
                         }
                     }
 
                     if (amounts.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(18.dp))
-                        Text(
-                            text = "Amounts",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = ColorAmber
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = ColorCardBg),
-                            modifier = Modifier.fillMaxWidth()
+                        Spacer(modifier = Modifier.height(S.lg))
+                        SectionLabel("amounts")
+                        Spacer(modifier = Modifier.height(S.sm))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(S.sm),
+                            verticalArrangement = Arrangement.spacedBy(S.sm)
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                amounts.forEach { amount ->
-                                    Row(
-                                        modifier = Modifier.padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "•",
-                                            color = ColorAmber,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(end = 8.dp)
-                                        )
-                                        Text(
-                                            text = amount,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = ColorCream,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                }
+                            amounts.forEach { amount ->
+                                SmritiChip(text = amount, kind = ChipKind.Amount)
                             }
                         }
                     }
 
                     if (tasks.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(18.dp))
-                        Text(
-                            text = "Tasks",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = ColorAmber
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = ColorCardBg),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                tasks.forEach { task ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Checkbox(
-                                            checked = task.done,
-                                            onCheckedChange = { done -> vm.toggleTask(task.id, done) },
-                                            colors = CheckboxDefaults.colors(
-                                                checkedColor = ColorAmber,
-                                                checkmarkColor = ColorInk,
-                                                uncheckedColor = ColorCream.copy(alpha = 0.6f)
-                                            )
-                                        )
-                                        Text(
-                                            text = task.text,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = if (task.done) ColorCream.copy(alpha = 0.45f) else ColorCream
-                                        )
-                                    }
-                                }
+                        Spacer(modifier = Modifier.height(S.lg))
+                        SectionLabel("tasks")
+                        Spacer(modifier = Modifier.height(S.sm))
+                        tasks.forEach { task ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = S.sm),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = task.done,
+                                    onCheckedChange = { done -> vm.toggleTask(task.id, done) },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = S.Red,
+                                        checkmarkColor = S.White,
+                                        uncheckedColor = S.Hairline
+                                    )
+                                )
+                                Text(
+                                    text = task.text,
+                                    style = SmritiType.Body,
+                                    color = if (task.done) S.MutedSoft else S.Ink,
+                                    textDecoration = if (task.done) TextDecoration.LineThrough else null
+                                )
                             }
+                            HairlineRule()
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-                HorizontalDivider(color = Color(0xFF262626))
-                Spacer(modifier = Modifier.height(16.dp))
+                if (currentRecord.ocrText.isNotBlank() || currentRecord.transcript.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(S.lg))
+                    DashedRule()
+                    Spacer(modifier = Modifier.height(S.lg))
+                }
 
                 CollapsibleRawSection(
-                    title = "What the camera read",
+                    title = "what the camera read",
                     content = currentRecord.ocrText
                 )
 
                 CollapsibleRawSection(
-                    title = "What you said",
+                    title = "what you said",
                     content = currentRecord.transcript
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(S.section))
             }
         }
     }
@@ -928,46 +828,37 @@ private fun CollapsibleRawSection(
     if (content.isBlank()) return
     var expanded by remember { mutableStateOf(false) }
 
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = ColorCardBg),
-        border = BorderStroke(1.dp, Color(0xFF282828)),
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
             .clickable { expanded = !expanded }
+            .padding(vertical = S.md)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = ColorCream.copy(alpha = 0.7f),
-                    fontWeight = FontWeight.Medium
-                )
-                Icon(
-                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = ColorCream.copy(alpha = 0.5f)
-                )
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SectionLabel(title.lowercase())
+            Text(
+                text = if (expanded) "−" else "+",
+                style = SmritiType.MetaMedium,
+                color = S.Red,
+                modifier = Modifier.semantics {
+                    contentDescription = if (expanded) "Collapse" else "Expand"
+                }
+            )
+        }
 
-            if (expanded) {
-                Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(color = Color(0xFF282828))
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = content,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = ColorCream.copy(alpha = 0.85f),
-                    lineHeight = 18.sp
-                )
-            }
+        if (expanded) {
+            Spacer(modifier = Modifier.height(S.md))
+            HairlineRule()
+            Spacer(modifier = Modifier.height(S.md))
+            Text(
+                text = content,
+                style = SmritiType.Mono,
+                color = S.Muted
+            )
         }
     }
 }
