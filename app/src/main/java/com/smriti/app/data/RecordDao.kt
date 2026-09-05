@@ -59,8 +59,24 @@ interface RecordDao {
     @Query("UPDATE records SET ocrText = :ocr WHERE id = :id")
     suspend fun setOcrText(id: Long, ocr: String)
 
-    @Query("UPDATE records SET title = :title, summary = :summary, peopleJson = :people, amountsJson = :amounts, tagsJson = :tags, embedding = :embedding, ocrText = :ocr, enrichmentState = 'DONE', enrichedAt = :at, enrichmentModel = :model, enrichmentError = NULL WHERE id = :id")
+    /**
+     * Applies AI enrichment outputs to a record. Guarded with `userEdited = 0` so that
+     * a record the user has manually edited is never overwritten by the model.
+     */
+    @Query("UPDATE records SET title = :title, summary = :summary, peopleJson = :people, amountsJson = :amounts, tagsJson = :tags, embedding = :embedding, ocrText = :ocr, enrichmentState = 'DONE', enrichedAt = :at, enrichmentModel = :model, enrichmentError = NULL WHERE id = :id AND userEdited = 0")
     suspend fun applyEnrichment(id: Long, title: String, summary: String, people: String, amounts: String, tags: String, embedding: ByteArray?, ocr: String, at: Long, model: String)
+
+    @Query("UPDATE records SET title = :title, summary = :summary, peopleJson = :people, amountsJson = :amounts, tagsJson = :tags, embedding = :embedding, userEdited = 1 WHERE id = :id")
+    suspend fun applyUserEdit(id: Long, title: String, summary: String, people: String, amounts: String, tags: String, embedding: ByteArray?)
+
+    @Query("UPDATE tasks SET text = :text, dueDateMillis = :dueDateMillis WHERE id = :id")
+    suspend fun updateTask(id: Long, text: String, dueDateMillis: Long?)
+
+    @Query("DELETE FROM tasks WHERE id = :id")
+    suspend fun deleteTask(id: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTask(task: TaskEntity): Long
 
     @Query("SELECT COUNT(*) FROM records WHERE enrichmentState = 'PENDING'")
     suspend fun pendingCount(): Int

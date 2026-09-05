@@ -21,7 +21,8 @@ data class RecordEntity(
     val enrichmentAttempts: Int = 0,
     val enrichedAt: Long? = null,
     val enrichmentModel: String? = null,
-    val enrichmentError: String? = null
+    val enrichmentError: String? = null,
+    val userEdited: Boolean = false
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -48,6 +49,7 @@ data class RecordEntity(
         if (enrichedAt != other.enrichedAt) return false
         if (enrichmentModel != other.enrichmentModel) return false
         if (enrichmentError != other.enrichmentError) return false
+        if (userEdited != other.userEdited) return false
 
         return true
     }
@@ -69,6 +71,7 @@ data class RecordEntity(
         result = 31 * result + (enrichedAt?.hashCode() ?: 0)
         result = 31 * result + (enrichmentModel?.hashCode() ?: 0)
         result = 31 * result + (enrichmentError?.hashCode() ?: 0)
+        result = 31 * result + userEdited.hashCode()
         return result
     }
 }
