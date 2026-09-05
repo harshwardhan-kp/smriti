@@ -47,10 +47,10 @@ interface RecordDao {
     @Query("UPDATE records SET embedding = :embedding WHERE id = :id")
     suspend fun setEmbedding(id: Long, embedding: ByteArray?)
 
-    @Query("SELECT * FROM records WHERE enrichmentState = 'PENDING' AND enrichmentAttempts < 3 ORDER BY createdAt ASC")
+    @Query("SELECT * FROM records WHERE enrichmentState = 'PENDING' AND enrichmentAttempts < 3 AND userEdited = 0 ORDER BY createdAt ASC")
     suspend fun pendingEnrichment(): List<RecordEntity>
 
-    @Query("UPDATE records SET enrichmentState = 'PENDING' WHERE enrichmentState = 'RUNNING'")
+    @Query("UPDATE records SET enrichmentState = 'PENDING' WHERE enrichmentState = 'RUNNING' AND userEdited = 0")
     suspend fun resetRunningToPending()
 
     @Query("UPDATE records SET enrichmentState = :state, enrichmentAttempts = enrichmentAttempts + :attemptDelta, enrichmentError = :error WHERE id = :id")
@@ -66,8 +66,8 @@ interface RecordDao {
     @Query("UPDATE records SET title = :title, summary = :summary, peopleJson = :people, amountsJson = :amounts, tagsJson = :tags, embedding = :embedding, ocrText = :ocr, enrichmentState = 'DONE', enrichedAt = :at, enrichmentModel = :model, enrichmentError = NULL WHERE id = :id AND userEdited = 0")
     suspend fun applyEnrichment(id: Long, title: String, summary: String, people: String, amounts: String, tags: String, embedding: ByteArray?, ocr: String, at: Long, model: String)
 
-    @Query("UPDATE records SET title = :title, summary = :summary, peopleJson = :people, amountsJson = :amounts, tagsJson = :tags, embedding = :embedding, userEdited = 1 WHERE id = :id")
-    suspend fun applyUserEdit(id: Long, title: String, summary: String, people: String, amounts: String, tags: String, embedding: ByteArray?)
+    @Query("UPDATE records SET title = :title, summary = :summary, peopleJson = :people, amountsJson = :amounts, tagsJson = :tags, embedding = :embedding, enrichmentState = 'DONE', enrichedAt = :at, userEdited = 1 WHERE id = :id")
+    suspend fun applyUserEdit(id: Long, title: String, summary: String, people: String, amounts: String, tags: String, embedding: ByteArray?, at: Long)
 
     @Query("UPDATE tasks SET text = :text, dueDateMillis = :dueDateMillis WHERE id = :id")
     suspend fun updateTask(id: Long, text: String, dueDateMillis: Long?)

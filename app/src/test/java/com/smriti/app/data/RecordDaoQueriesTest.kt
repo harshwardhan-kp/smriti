@@ -57,7 +57,7 @@ class RecordDaoQueriesTest {
         // Try runtime reflection first; if null (due to CLASS retention), fall back to bytecode inspection
         val enrichmentQuery = applyEnrichmentMethod?.getAnnotation(Query::class.java)?.value
             ?: extractConstantPoolStrings(RecordDao::class.java)
-                .firstOrNull { it.startsWith("UPDATE records SET") && it.contains("enrichmentState = 'DONE'") }
+                .firstOrNull { it.startsWith("UPDATE records SET") && it.contains("enrichmentModel = :model") }
 
         assertNotNull("applyEnrichment query must exist", enrichmentQuery)
         assertTrue(
@@ -76,6 +76,14 @@ class RecordDaoQueriesTest {
         assertTrue(
             "applyUserEdit query must contain 'userEdited = 1'",
             userEditQuery!!.contains("userEdited = 1")
+        )
+        assertTrue(
+            "applyUserEdit query must contain 'enrichmentState = \\'DONE\\''",
+            userEditQuery.contains("enrichmentState = 'DONE'")
+        )
+        assertTrue(
+            "applyUserEdit query must contain 'enrichedAt = :at'",
+            userEditQuery.contains("enrichedAt = :at")
         )
     }
 
