@@ -1,11 +1,16 @@
 package com.smriti.app.capture
 
 import android.annotation.SuppressLint
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -21,6 +26,10 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import com.smriti.app.MainActivity
+import com.smriti.app.R
 import com.smriti.app.data.SmritiDb
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +51,9 @@ class BubbleService : Service() {
         const val ACTION_START = "com.smriti.app.capture.action.START_BUBBLE"
         const val ACTION_STOP = "com.smriti.app.capture.action.STOP_BUBBLE"
 
+        const val CHANNEL_ID = "smriti_bubble"
+        private const val NOTIFICATION_ID = 2002
+
         private const val PREFS_NAME = "smriti_bubble_prefs"
         private const val PREF_BUBBLE_X = "bubble_x"
         private const val PREF_BUBBLE_Y = "bubble_y"
@@ -56,7 +68,7 @@ class BubbleService : Service() {
             val intent = Intent(context, BubbleService::class.java).apply {
                 action = ACTION_START
             }
-            context.startService(intent)
+            ContextCompat.startForegroundService(context, intent)
         }
 
         fun stop(context: Context) {
@@ -122,11 +134,71 @@ class BubbleService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Capture bubble",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Notification for persistent capture bubble overlay"
+                setShowBadge(false)
+            }
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun createNotification(): Notification {
+        createNotificationChannel()
+        val contentIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Smriti capture bubble")
+            .setContentText("Long-press the bubble to capture and narrate")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setContentIntent(contentIntent)
+            .build()
+    }
+
+    private fun startForegroundServiceNotification() {
+        val notification = createNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun stopForegroundNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        notificationManager?.cancel(NOTIFICATION_ID)
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate() {
         super.onCreate()
+        startForegroundServiceNotification()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             Log.w(TAG, "Cannot start BubbleService: overlay permission not granted")
+            stopForegroundNotification()
             stopSelf()
             return
         }
@@ -194,8 +266,14 @@ class BubbleService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        if (intent == null) {
+            Log.i(TAG, "Restarted with null intent (sticky restart); re-attaching bubble overlay")
+            attachBubbleView()
+            return START_STICKY
+        }
+        when (intent.action) {
             ACTION_STOP -> {
+                stopForegroundNotification()
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -203,6 +281,7 @@ class BubbleService : Service() {
                 attachBubbleView()
             }
             else -> {
+                Log.w(TAG, "Unknown action: ${intent.action}")
                 attachBubbleView()
             }
         }
@@ -225,6 +304,7 @@ class BubbleService : Service() {
             Log.i(TAG, "Bubble overlay attached")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to add bubble overlay: ${e.message}", e)
+            stopForegroundNotification()
             stopSelf()
         }
     }
@@ -403,6 +483,7 @@ class BubbleService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         running = false
+        stopForegroundNotification()
         handler.removeCallbacksAndMessages(null)
         serviceScope.cancel()
         captureJob?.cancel()
@@ -415,11 +496,11 @@ class BubbleService : Service() {
         if (::bubbleView.isInitialized && bubbleView.isAttachedToWindow) {
             try {
                 windowManager.removeView(bubbleView)
-                bubbleAttached = false
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to remove bubble view: ${e.message}")
             }
         }
+        bubbleAttached = false
         Log.i(TAG, "BubbleService destroyed")
     }
 }

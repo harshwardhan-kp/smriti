@@ -19,5 +19,6 @@ class BubbleServiceTest {
         assertEquals("SmritiBubble", BubbleService.TAG)
         assertEquals("com.smriti.app.capture.action.START_BUBBLE", BubbleService.ACTION_START)
         assertEquals("com.smriti.app.capture.action.STOP_BUBBLE", BubbleService.ACTION_STOP)
+        assertEquals("smriti_bubble", BubbleService.CHANNEL_ID)
     }
 }

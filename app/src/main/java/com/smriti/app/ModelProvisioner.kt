@@ -25,7 +25,12 @@ object ModelProvisioner {
     )
 
     /** Preferred first when several models are present. Substring match, case-insensitive. */
-    private val preference = listOf("gemma-3n", "gemma3n", "gemma3-1b", "gemma", "qwen2.5-1.5b", "qwen", "phi", "smollm")
+    // Gemma 3 1B is preferred over the larger 3n E4B on purpose. Measured on an iQOO 15:
+    // 1B extracts in 2-3 s, E4B in 15-45 s. E4B finds more (2/2 action items against 0-1),
+    // but a capture that fills in while you are still looking at it is worth more than a
+    // slightly richer one that lands a minute later. Move "gemma-3n" back to the front to
+    // trade speed for quality.
+    private val preference = listOf("gemma3-1b", "gemma-3n", "gemma3n", "gemma", "qwen2.5-1.5b", "qwen", "phi", "smollm")
 
     data class Model(val file: File, val label: String)
 
