@@ -82,6 +82,41 @@ class SherpaWhisperAsr(private val context: Context) : Asr, PushToTalk {
             return samples
         }
 
+        // Whisper's own special tokens / pseudo-tokens emitted when transcribing silence or non-speech audio.
+        // In Whisper's training dataset (derived from subtitles), silent or inaudible segments
+        // were tagged with bracketed or parenthesized markers like [INAUDIBLE], [BLANK_AUDIO], or [Silence].
+        private val SILENCE_MARKERS = setOf(
+            "inaudible",
+            "blank_audio",
+            "blank audio",
+            "silence",
+            "[inaudible]",
+            "(inaudible)",
+            "[blank_audio]",
+            "(blank_audio)",
+            "[blank audio]",
+            "(blank audio)",
+            "[silence]",
+            "(silence)"
+        )
+
+        internal fun cleanTranscript(raw: String): String {
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty()) return ""
+
+            val isEnclosed = (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+                (trimmed.startsWith('(') && trimmed.endsWith(')'))
+            if (isEnclosed && trimmed.length >= 2) {
+                val inner = trimmed.substring(1, trimmed.length - 1).trim().lowercase()
+                if (inner in SILENCE_MARKERS || "[$inner]" in SILENCE_MARKERS || "($inner)" in SILENCE_MARKERS) {
+                    return ""
+                }
+            }
+            return trimmed
+        }
+
+        internal fun stripSilenceMarkers(raw: String): String = cleanTranscript(raw)
+
         internal suspend fun transcribeFile(context: Context, wav: File): String = withContext(Dispatchers.IO) {
             val recognizer = getOrLoadRecognizer(context)
             val samples = readWavSamples(wav)
@@ -96,7 +131,7 @@ class SherpaWhisperAsr(private val context: Context) : Asr, PushToTalk {
                     recognizer.decode(s)
                     recognizer.getResult(s).text
                 }
-                text.trim()
+                cleanTranscript(text)
             } finally {
                 try {
                     stream?.release()
@@ -157,7 +192,7 @@ class SherpaWhisperAsr(private val context: Context) : Asr, PushToTalk {
                     recognizer.decode(s)
                     recognizer.getResult(s).text
                 }
-                text.trim()
+                cleanTranscript(text)
             } finally {
                 try {
                     stream?.release()

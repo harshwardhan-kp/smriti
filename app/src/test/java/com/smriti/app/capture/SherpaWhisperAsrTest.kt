@@ -103,4 +103,34 @@ class SherpaWhisperAsrTest {
         assertTrue(msg.contains("*decoder*.onnx"))
         assertTrue(msg.contains("*tokens*.txt"))
     }
+
+    @Test
+    fun `cleanTranscript strips silence markers case-insensitively with brackets or parentheses`() {
+        assertEquals("", SherpaWhisperAsr.cleanTranscript("[INAUDIBLE]"))
+        assertEquals("", SherpaWhisperAsr.cleanTranscript("  [inaudible]  "))
+        assertEquals("", SherpaWhisperAsr.cleanTranscript("(inaudible)"))
+        assertEquals("", SherpaWhisperAsr.cleanTranscript("[BLANK_AUDIO]"))
+        assertEquals("", SherpaWhisperAsr.cleanTranscript("[ Silence ]"))
+        assertEquals("", SherpaWhisperAsr.cleanTranscript("  ( silence )  "))
+    }
+
+    @Test
+    fun `cleanTranscript preserves transcripts that merely contain inaudible in a sentence`() {
+        val transcript = "The speaker said something inaudible due to background noise"
+        assertEquals(transcript, SherpaWhisperAsr.cleanTranscript(transcript))
+
+        val transcriptWithParen = "His comment was (inaudible) but the rest was clear"
+        assertEquals(transcriptWithParen, SherpaWhisperAsr.cleanTranscript(transcriptWithParen))
+
+        val startingWord = "inaudible notes from earlier"
+        assertEquals(startingWord, SherpaWhisperAsr.cleanTranscript(startingWord))
+    }
+
+    @Test
+    fun `cleanTranscript preserves regular transcripts and handles empty or blank input`() {
+        assertEquals("Meeting notes for tomorrow", SherpaWhisperAsr.cleanTranscript("  Meeting notes for tomorrow  "))
+        assertEquals("", SherpaWhisperAsr.cleanTranscript("   "))
+        assertEquals("", SherpaWhisperAsr.cleanTranscript(""))
+    }
 }
+

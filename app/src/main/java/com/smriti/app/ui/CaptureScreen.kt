@@ -115,7 +115,7 @@ fun CaptureScreen(
                 border = BorderStroke(1.dp, ColorAmber.copy(alpha = 0.6f))
             ) {
                 Text(
-                    text = "OFFLINE · ON-DEVICE",
+                    text = BuildBadge.label,
                     color = ColorAmber,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,

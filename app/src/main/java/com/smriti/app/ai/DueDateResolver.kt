@@ -22,20 +22,126 @@ object DueDateResolver {
         """\b(next week|this week|next month|end of the week|end of month|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec|\d{4}-\d{2}-\d{2}|\d{4})\b"""
     )
 
-    fun resolve(actionText: String, transcript: String, modelDue: String?, today: LocalDate): String? {
-        // 1. Build the haystack as actionText + " " + transcript, lowercased.
-        val haystack = "$actionText $transcript".lowercase()
+    private val CLAUSE_DELIMITER_REGEX = Regex(
+        """,|;|\s+and\s+|\s+then\s+|\s+after\s+that\s+"""
+    )
 
-        // 2. If the haystack contains NO temporal expression at all -> return null, ALWAYS,
-        // no matter what modelDue says. This is the fix for fault (b).
-        val hasTemporalExpression = WEEKDAY_REGEX.containsMatchIn(haystack) ||
-            RELATIVE_DAY_REGEX.containsMatchIn(haystack) ||
-            OTHER_TEMPORAL_REGEX.containsMatchIn(haystack)
+    internal val STOP_WORDS = setOf(
+        "the", "a", "an", "to", "of", "for", "from", "we", "i", "you", "it", "and",
+        "more", "need", "needs", "by", "is", "are", "be"
+    )
 
-        if (!hasTemporalExpression) {
+    internal fun hasTemporalExpression(text: String): Boolean {
+        val lower = text.lowercase()
+        return WEEKDAY_REGEX.containsMatchIn(lower) ||
+            RELATIVE_DAY_REGEX.containsMatchIn(lower) ||
+            OTHER_TEMPORAL_REGEX.containsMatchIn(lower)
+    }
+
+    internal fun extractWords(text: String): Set<String> {
+        return text.lowercase()
+            .split(Regex("""[^a-z0-9]+"""))
+            .filter { it.isNotEmpty() && it !in STOP_WORDS }
+            .toSet()
+    }
+
+    internal fun splitClauses(transcript: String): List<String> {
+        return transcript.lowercase()
+            .split(CLAUSE_DELIMITER_REGEX)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+    }
+
+    /**
+     * Attributes a temporal expression from the action text or transcript clauses.
+     * Returns the winning clause/text containing the temporal expression, or null.
+     */
+    internal fun attributeClause(actionText: String, transcript: String): String? {
+        // 1. If the ACTION TEXT itself contains a temporal expression, resolve from that alone.
+        // Done - no transcript involved.
+        if (hasTemporalExpression(actionText)) {
+            return actionText.lowercase()
+        }
+
+        // 2. Otherwise split the transcript into clauses on ",", ";", " and ", " then ", " after that ".
+        // Keep them in order. Lowercase for matching.
+        val clauses = splitClauses(transcript)
+        if (clauses.isEmpty()) return null
+
+        // 3. Find the clause(s) containing a temporal expression. If there are none -> null.
+        if (clauses.none { hasTemporalExpression(it) }) {
             return null
         }
 
+        // When transcript has only 1 clause, there are no competing clauses.
+        if (clauses.size == 1) {
+            return clauses[0]
+        }
+
+        // 4. Pick the clause whose words overlap the action text most (case-insensitive word-set
+        // intersection, ignoring stop words: the, a, an, to, of, for, from, we, i, you, it, and,
+        // more, need, needs, by, is, are, be). Require the BEST overlap to be at least 1 real word.
+        val actionWords = extractWords(actionText)
+        var bestOverlap = 0
+        var bestClause: String? = null
+        var isTie = false
+
+        for (clause in clauses) {
+            val clauseWords = extractWords(clause)
+            val overlap = actionWords.intersect(clauseWords).size
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap
+                bestClause = clause
+                isTie = false
+            } else if (overlap == bestOverlap && overlap > 0) {
+                isTie = true
+            }
+        }
+
+        // Require the BEST overlap to be at least 1 real word.
+        if (bestOverlap < 1) {
+            return null
+        }
+
+        // 6. If two clauses tie on overlap, return null - ambiguous attribution must not invent a date.
+        if (isTie) {
+            return null
+        }
+
+        // 5. If the winning clause contains a temporal expression -> resolve from that clause.
+        // If the winning clause does NOT -> return null. This is the fix: the units clause wins
+        // nothing from the friday clause.
+        val winner = bestClause ?: return null
+        if (!hasTemporalExpression(winner)) {
+            return null
+        }
+
+        return winner
+    }
+
+    internal fun attribute(actionText: String, transcript: String): String? =
+        attributeClause(actionText, transcript)
+
+    private fun isJson(text: String): Boolean {
+        val trimmed = text.trim()
+        return trimmed.startsWith("{") ||
+            trimmed.startsWith("```") ||
+            text.contains("\"actions\"") ||
+            text.contains("\"action_items\"") ||
+            text.contains("\"actionItems\"") ||
+            text.contains("\"title\"")
+    }
+
+    fun resolve(actionText: String, transcript: String, modelDue: String?, today: LocalDate): String? {
+        if (isJson(transcript)) {
+            val haystack = "$actionText $transcript".lowercase()
+            return resolveFromHaystack(haystack, modelDue, today)
+        }
+        val target = attributeClause(actionText, transcript) ?: return null
+        return resolveFromHaystack(target, modelDue, today)
+    }
+
+    private fun resolveFromHaystack(haystack: String, modelDue: String?, today: LocalDate): String? {
         // 3. If a WEEKDAY name is present -> compute the date ourselves and IGNORE modelDue entirely.
         // This is the fix for fault (a). Use the NEXT occurrence strictly after today
         // (so on Saturday 2026-09-05, "friday" -> 2026-09-11, never today and never in the past).

@@ -174,6 +174,105 @@ class ExtractorJsonTest {
     }
 
     @Test
+    fun testDueDateClauseAttribution() {
+        val today = LocalDate.of(2026, 9, 5) // a Saturday
+
+        // - resolve("Rohit ships the API",
+        //           "Rohit ships the API by Friday and we need two hundred more units from Sharma Traders",
+        //           "2026-09-09", today) == "2026-09-11"
+        assertEquals(
+            "2026-09-11",
+            DueDateResolver.resolve(
+                "Rohit ships the API",
+                "Rohit ships the API by Friday and we need two hundred more units from Sharma Traders",
+                "2026-09-09",
+                today
+            )
+        )
+
+        // - resolve("Need two hundred units from Sharma Traders",
+        //           "Rohit ships the API by Friday and we need two hundred more units from Sharma Traders",
+        //           "2026-09-09", today) == null          // THE BUG BEING FIXED
+        assertNull(
+            DueDateResolver.resolve(
+                "Need two hundred units from Sharma Traders",
+                "Rohit ships the API by Friday and we need two hundred more units from Sharma Traders",
+                "2026-09-09",
+                today
+            )
+        )
+
+        // - resolve("call the supplier tomorrow", "call the supplier tomorrow", null, today) == "2026-09-06"
+        //   (temporal expression in the action text itself, rule 1)
+        assertEquals(
+            "2026-09-06",
+            DueDateResolver.resolve(
+                "call the supplier tomorrow",
+                "call the supplier tomorrow",
+                null,
+                today
+            )
+        )
+
+        // - a single-action transcript still works:
+        //   resolve("pay Sharma", "pay Sharma on Monday", null, today) == "2026-09-07"
+        assertEquals(
+            "2026-09-07",
+            DueDateResolver.resolve(
+                "pay Sharma",
+                "pay Sharma on Monday",
+                null,
+                today
+            )
+        )
+
+        // Verify direct clause attribution
+        assertEquals(
+            "rohit ships the api by friday",
+            DueDateResolver.attributeClause(
+                "Rohit ships the API",
+                "Rohit ships the API by Friday and we need two hundred more units from Sharma Traders"
+            )
+        )
+        assertNull(
+            DueDateResolver.attributeClause(
+                "Need two hundred units from Sharma Traders",
+                "Rohit ships the API by Friday and we need two hundred more units from Sharma Traders"
+            )
+        )
+
+        // Tie on overlap returns null (rule 6)
+        assertNull(
+            DueDateResolver.attributeClause(
+                "deliver shipment",
+                "deliver shipment on Monday and deliver shipment on Friday"
+            )
+        )
+
+        // Split on comma and then
+        assertEquals(
+            "2026-09-08",
+            DueDateResolver.resolve(
+                "deliver goods",
+                "pack items, then deliver goods by Tuesday",
+                null,
+                today
+            )
+        )
+
+        // Split on semicolon and after that
+        assertEquals(
+            "2026-09-09",
+            DueDateResolver.resolve(
+                "audit records",
+                "clean warehouse; after that audit records by Wednesday",
+                null,
+                today
+            )
+        )
+    }
+
+    @Test
     fun testUnconstrainedCallsHaveNullSchemaByDefault() = kotlinx.coroutines.runBlocking {
         var capturedSchema: String? = "not-null"
         val fakeBackend = object : LlmBackend {
