@@ -347,6 +347,7 @@ fun DetailScreen(
 
     var isEditing by remember(recordId) { mutableStateOf(false) }
     var draft by remember(recordId) { mutableStateOf<MemoryDraft?>(null) }
+    var showPhotoViewer by remember(recordId) { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -464,7 +465,17 @@ fun DetailScreen(
         } else {
             val photoBitmap: ImageBitmap? = remember(currentRecord.photoPath) {
                 try {
-                    BitmapFactory.decodeFile(currentRecord.photoPath)?.asImageBitmap()
+                    val options = BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                    }
+                    BitmapFactory.decodeFile(currentRecord.photoPath, options)
+                    var sampleSize = 1
+                    while (options.outWidth / (sampleSize * 2) >= 1080 && options.outHeight / (sampleSize * 2) >= 1080) {
+                        sampleSize *= 2
+                    }
+                    options.inJustDecodeBounds = false
+                    options.inSampleSize = sampleSize
+                    BitmapFactory.decodeFile(currentRecord.photoPath, options)?.asImageBitmap()
                 } catch (e: Exception) {
                     null
                 }
@@ -484,14 +495,18 @@ fun DetailScreen(
                     .padding(S.gutter)
             ) {
                 if (photoBitmap != null) {
+                    val ratio = remember(photoBitmap) {
+                        (photoBitmap.width.toFloat() / photoBitmap.height.toFloat()).coerceAtLeast(0.75f)
+                    }
                     Image(
                         bitmap = photoBitmap,
                         contentDescription = "Captured Photo",
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(4f / 3f)
+                            .aspectRatio(ratio)
                             .clip(S.r6)
+                            .then(if (isEditing) Modifier else Modifier.clickable { showPhotoViewer = true })
                     )
                     Spacer(modifier = Modifier.height(S.gutter))
                 } else if (currentRecord.photoPath.isBlank()) {
@@ -813,6 +828,13 @@ fun DetailScreen(
                 )
 
                 Spacer(modifier = Modifier.height(S.section))
+            }
+
+            if (showPhotoViewer && currentRecord.photoPath.isNotBlank()) {
+                PhotoViewer(
+                    photoPath = currentRecord.photoPath,
+                    onDismiss = { showPhotoViewer = false }
+                )
             }
         }
     }

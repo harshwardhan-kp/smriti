@@ -1,0 +1,196 @@
+================================================================================
+SMRITI VISUAL LANGUAGE — HOUSE RULES
+Read this whole block before you change anything. It is not advisory.
+================================================================================
+
+The app is being moved onto the design language of antimattr.one. That language has already
+been ported into the codebase for you. Your job is to APPLY it, not to design anything. If a
+value you need is not in the files below, you are doing something the design does not call for
+— use the nearest thing that IS there.
+
+READ THESE THREE FILES FIRST, IN FULL:
+    app/src/main/java/com/smriti/app/ui/theme/Tokens.kt      — object S: every colour, every spacing step, every radius
+    app/src/main/java/com/smriti/app/ui/theme/Type.kt        — object SmritiType: every text style
+    app/src/main/java/com/smriti/app/ui/components/Primitives.kt — BracketLabel, NodeSquare, HairlineRule, DashedRule, SmritiButton, SmritiOutlineButton, SmritiChip, ChipKind, DisplayHeading, SectionLabel
+
+ABSOLUTE RULES
+
+1. NO LITERAL COLOURS. Not one `Color(0xFF...)` may survive in the file you are editing. Every
+   screen currently declares its own private `ColorAmber` / `ColorInk` / `ColorCream` /
+   `ColorCardBg` / `ColorChipBg` / `ColorRedAlert` at the top — DELETE those declarations and
+   replace every use with a member of `S`. The mapping is fixed:
+       ColorInk        (was the near-black page)  -> S.Paper        [the page is now near-white]
+       ColorCream      (was the light type)       -> S.Ink          [type is now near-black]
+       ColorCream@0.6  (was muted type)           -> S.Muted
+       ColorCream@0.45 (was faintest type)        -> S.MutedSoft
+       ColorCardBg / ColorChipBg (dark cards)     -> S.PaperSunk
+       ColorAmber      (was the accent)           -> S.Red          [the accent is now red]
+       ColorRedAlert   (was the live/overdue red) -> S.Red
+       a "still working" state                    -> S.Amber
+       a "done / settled" state                   -> S.Green
+       any border or divider                      -> S.Hairline
+
+2. NO LITERAL TEXT STYLES. No `fontSize =`, no `fontFamily =`, no `MaterialTheme.typography.*`,
+   no `fontWeight =` except where a SmritiType style already carries it. Every Text() gets
+   `style = SmritiType.<something>`. The mapping is fixed:
+       a screen's own title / a record's title  -> SmritiType.DisplaySmall  (Instrument Serif)
+       a card title                             -> SmritiType.Title
+       prose, summaries                         -> SmritiType.Body
+       a card's supporting line                 -> SmritiType.BodySmall
+       a control's sans label                   -> SmritiType.Label
+       timestamps, tags, counts, states         -> SmritiType.Meta / MetaMedium
+       any button label                         -> handled by SmritiButton, do not style it
+       transcripts and OCR output               -> SmritiType.Mono
+
+3. EVERY PIECE OF UI COPY IS LOWERCASE. Every string on antimattr.one is lowercase, including
+   its own name. "Timeline" becomes "timeline". "Open tasks" becomes "open tasks". "Could not
+   extract" becomes "could not extract". This applies to headings, labels, buttons, empty
+   states, placeholders and content descriptions' visible counterparts. It does NOT apply to
+   user data (a transcript, a person's name, a title the model wrote) — never lowercase what a
+   person said or wrote. It does not apply to contentDescription strings, which are for a
+   screen reader and should stay ordinary sentence case.
+
+4. NO LITERAL SPACING. Use S.xs (4), S.sm (6), S.md (10), S.gutter (16), S.lg (24), S.xl (32),
+   S.section (44). Horizontal page padding is S.gutter and nothing else.
+
+5. NO LITERAL RADII. Use S.r6 (the default — use this unless told otherwise), S.r8, S.r24,
+   S.pill. 12.dp and 16.dp corners are gone from this app.
+
+6. NO ELEVATION, NO SHADOWS. This language is drawn, not stacked. A card is separated by a
+   hairline border and a background one step back (S.PaperSunk), never by a shadow. If a
+   Material component insists on elevation, set it to 0.dp.
+
+7. Metadata wears brackets. Any small mono fact — a timestamp, a state, a count, a due date —
+   goes through `BracketLabel("...")`, which renders `[label]` with the brackets in red. Do not
+   hand-write square brackets into a string; call the component.
+
+WHAT NOT TO BREAK
+
+You are changing appearance ONLY. Do not change any of the following, in any file:
+  - navigation, callbacks, or the shape of any function's parameters
+  - ViewModels, DAOs, Flows, or anything that reads or writes the database
+  - which composable is rendered for which enrichmentState
+  - LazyColumn item keys (they are prefixed "task-" / "record-" to stop a key collision that
+    used to crash the timeline on scroll — leave them exactly as they are)
+  - the try/catch around BitmapFactory.decodeFile, or the branch that renders a mic glyph when
+    record.photoPath is blank (that is how a voice-only memory is drawn)
+  - any contentDescription that already exists
+
+TOOLCHAIN
+- Kotlin 2.0.21. Compose BOM 2024.09.03. minSdk 26, targetSdk 36.
+- material-icons-extended is available.
+- This app is offline-first; the `offline` flavour is the one that matters. `devcloud` is on
+  hold — add nothing to it, but it MUST still compile.
+- Must build BOTH flavours and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+================================================================================
+
+TASK: make the memory's photograph correct and openable.
+ONE FILE CHANGES: app/src/main/java/com/smriti/app/ui/DetailScreen.kt
+
+Another agent is creating app/src/main/java/com/smriti/app/ui/PhotoViewer.kt at the same time as
+you. That file may not exist yet when you start and you must NOT create it, edit it, or wait for
+it. Write your call site against the signature below and trust it:
+
+    @Composable
+    fun PhotoViewer(photoPath: String, onDismiss: () -> Unit)
+
+    import com.smriti.app.ui.PhotoViewer      // same package; the import may be unnecessary
+
+If your build fails ONLY with "unresolved reference: PhotoViewer", that means the other agent
+has not finished writing their file yet. That is expected and it is not your bug — say so in
+your summary and stop. Do not stub the function, do not write your own version of it, and do not
+work around it.
+
+TWO DEFECTS, both in the photo block around line 486.
+
+--------------------------------------------------------------------------------
+DEFECT 1 — the photograph is cropped, and for screenshots that is severe
+--------------------------------------------------------------------------------
+The Image is currently
+
+    Image(
+        bitmap = photoBitmap,
+        contentDescription = "Captured Photo",
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(S.r6)
+    )
+
+A camera capture is 4096x3072, which is exactly 4:3, so those survive by luck. A capture made
+from the floating bubble is a SCREENSHOT at the phone's own aspect ratio — 1440x3168 on this
+device, a ratio of 0.455. Forced into a 4:3 box and cropped, roughly four fifths of it is thrown
+away on screen.
+
+Fix: derive the ratio from the bitmap and stop cropping.
+
+    val ratio = remember(photoBitmap) {
+        (photoBitmap.width.toFloat() / photoBitmap.height.toFloat()).coerceAtLeast(0.75f)
+    }
+    Image(
+        bitmap = photoBitmap,
+        contentDescription = "Captured Photo",
+        contentScale = ContentScale.Fit,
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(ratio)
+            .clip(S.r6)
+            .clickable { showPhotoViewer = true }
+    )
+
+`ContentScale.Fit` guarantees nothing is ever cut. The `coerceAtLeast(0.75f)` is a floor on the
+BOX, not on the picture: a tall screenshot would otherwise make an inline frame more than twice
+the screen width in height and swallow the whole memory. At 0.75 the box is a portrait 4:3, the
+screenshot letterboxes inside it with bars either side, and every pixel of it is still visible.
+Nothing is cropped in either case.
+
+--------------------------------------------------------------------------------
+DEFECT 2 — the photograph cannot be opened
+--------------------------------------------------------------------------------
+There is no click handler on the Image at all. That is the whole of the user's report: they tap
+the photo and nothing happens.
+
+Add, alongside the other remembered state near the top of the composable body:
+
+    var showPhotoViewer by remember(recordId) { mutableStateOf(false) }
+
+and, at the very end of the composable — after the scrolling Column closes, still inside the
+Scaffold's content lambda so it draws above everything:
+
+    if (showPhotoViewer && currentRecord.photoPath.isNotBlank()) {
+        PhotoViewer(
+            photoPath = currentRecord.photoPath,
+            onDismiss = { showPhotoViewer = false }
+        )
+    }
+
+Guard on `photoPath.isNotBlank()` so a voice-only memory can never open an empty viewer.
+
+The photo must NOT be tappable while `isEditing` is true — a tap in edit mode should not throw
+the user into a full-screen viewer mid-correction. Make the clickable conditional:
+`.then(if (isEditing) Modifier else Modifier.clickable { showPhotoViewer = true })`
+
+--------------------------------------------------------------------------------
+WHILE YOU ARE IN THIS BLOCK — decode cost
+--------------------------------------------------------------------------------
+`BitmapFactory.decodeFile(currentRecord.photoPath)` decodes 4096x3072 at full size, about 50 MB
+as ARGB_8888, on every open of every memory, on a phone that is also holding a multi-gigabyte
+language model. Make the inline decode downsample:
+  - first pass with `inJustDecodeBounds = true` to read outWidth/outHeight
+  - inSampleSize = the largest power of two keeping both dimensions >= 1080
+  - second pass with that inSampleSize
+Keep the existing try/catch and the existing `remember(currentRecord.photoPath)` key, and keep
+the null branch and the blank-path "voice note" branch exactly as they are. The full-resolution
+decode belongs to the viewer, not to this screen.
+
+CONSTRAINTS
+- Change only DetailScreen.kt. Do not create PhotoViewer.kt.
+- Do not touch DetailViewModel, edit mode, the draft, vm.save, the chips, the tasks, or the
+  evidence sections.
+- No new dependency, no image library.
+- Colours from S, styles from SmritiType, spacing from S. No Color(0xFF...) literals.
+- Kotlin 2.0.21, Compose BOM 2024.09.03, minSdk 26.
+- You MAY run ./gradlew assembleOfflineDebug to check your work.
+
+Print a summary, and state the inline box ratio a 1440x3168 screenshot ends up with.
