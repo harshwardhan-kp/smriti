@@ -4,6 +4,9 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
       Smriti is offline by construction, not by convention.
@@ -41,6 +44,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".capture.ScreenCaptureConsentActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Smriti.Transparent" />
+
+        <service
+            android:name=".capture.ScreenCaptureService"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
     </application>
 
 </manifest>

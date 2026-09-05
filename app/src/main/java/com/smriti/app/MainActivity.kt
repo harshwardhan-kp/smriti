@@ -42,8 +42,11 @@ import com.smriti.app.ui.TimelineScreen
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.smriti.app.ai.Enricher
+import android.content.Intent
 import com.smriti.app.ai.NpuProbe
 import com.smriti.app.capture.AsrSelfTest
+import com.smriti.app.capture.ScreenCaptureConsentActivity
+import com.smriti.app.capture.ScreenCaptureService
 import com.smriti.app.ui.theme.SmritiTheme
 
 class MainActivity : ComponentActivity() {
@@ -79,12 +82,33 @@ class MainActivity : ComponentActivity() {
             AsrSelfTest.run(this, lifecycleScope)
         }
 
+        if (intent?.getBooleanExtra("smriti_screencap", false) == true) {
+            startActivity(Intent(this, ScreenCaptureConsentActivity::class.java))
+        }
+
+        if (intent?.getBooleanExtra("smriti_screengrab", false) == true) {
+            ScreenCaptureService.capture(this)
+        }
+
         Enricher.request(this)
 
         setContent {
             SmritiTheme {
                 SmritiApp()
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+
+        if (intent.getBooleanExtra("smriti_screencap", false)) {
+            startActivity(Intent(this, ScreenCaptureConsentActivity::class.java))
+        }
+
+        if (intent.getBooleanExtra("smriti_screengrab", false)) {
+            ScreenCaptureService.capture(this)
         }
     }
 }
