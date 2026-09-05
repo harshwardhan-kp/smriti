@@ -26,6 +26,46 @@ from typing import Any, Dict, List, Optional
 # repair_json
 # ---------------------------------------------------------------------------
 
+def _unescape_candidate(text: str) -> str:
+    """Unescape a brace-sliced candidate that failed to parse as-is.
+
+    Maps the literal two-character sequences ``\\n``/``\\t``/``\\r``/``\\"``
+    and ``\\\\`` to newline/tab/carriage-return/quote/backslash.  Any other
+    backslash sequence is left untouched.  Single-pass so an escaped
+    backslash followed by ``n`` (``\\\\n``) collapses to backslash + ``n``,
+    not to a newline.
+    """
+    out: List[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\" and i + 1 < len(text):
+            nxt = text[i + 1]
+            if nxt == "n":
+                out.append("\n")
+                i += 2
+                continue
+            if nxt == "t":
+                out.append("\t")
+                i += 2
+                continue
+            if nxt == "r":
+                out.append("\r")
+                i += 2
+                continue
+            if nxt == '"':
+                out.append('"')
+                i += 2
+                continue
+            if nxt == "\\":
+                out.append("\\")
+                i += 2
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def repair_json(raw: str) -> str:
     """Best-effort cleanup of an LLM JSON response into something json.loads
     can handle.
@@ -34,6 +74,15 @@ def repair_json(raw: str) -> str:
       1. Strip markdown ```json … ``` fences.
       2. Slice from the first '{' to the last '}'.
       3. Remove trailing commas before '}' or ']'.
+      4. Unescape fallback: if the slice parses as-is, return it unchanged;
+         only if that parse fails, unescape literal ``\\n``/``\\t``/``\\r``/
+         ``\\"``/``\\\\`` sequences and use the unescaped form when it
+         parses, else return the slice from step 3.
+         WHY parse-first: a blind global replace of ``\\"`` would corrupt
+         legitimately escaped quotes inside string values — e.g.
+         ``{"title": "He said \\"hi\\""}`` is valid JSON today and must keep
+         parsing to ``He said "hi"`` — so unescaping may only ever run as a
+         fallback after a genuine parse failure.
     """
     text = raw.strip()
 
@@ -52,7 +101,18 @@ def repair_json(raw: str) -> str:
     # 3. Trailing commas  (e.g.  {"a":1,}  or  [1,2,] )
     text = re.sub(r",\s*([}\]])", r"\1", text)
 
-    return text
+    # 4. Unescape fallback (parse-first: never touch a slice that already parses).
+    try:
+        json.loads(text)
+        return text
+    except json.JSONDecodeError:
+        pass
+    candidate = _unescape_candidate(text)
+    try:
+        json.loads(candidate)
+        return candidate
+    except json.JSONDecodeError:
+        return text
 
 
 # ---------------------------------------------------------------------------

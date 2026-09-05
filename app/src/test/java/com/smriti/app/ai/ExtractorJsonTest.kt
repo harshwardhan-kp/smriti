@@ -97,4 +97,39 @@ class ExtractorJsonTest {
         val repaired = extractor.repairJson(input)
         assertTrue(repaired.isEmpty())
     }
+
+    @Test
+    fun testSingleLineBackslashEscapedModelOutput() {
+        // Measured on an iQOO 15, Qwen2.5-1.5B q8, 2026-09-05: the model returned its
+        // answer as single-line, backslash-escaped JSON — literal \n and \" sequences
+        // rather than real newlines and quotes, with "people" unescaped.
+        val input = "```json\\n{\\n  \\\"title\\\": \\\"Action Items for Delivery\\\",\\n  \\\"summary\\\": \\\"Sharma Traders needs two hundred more API units by Friday.\\\",\\n  \\\"people\\\": [\"Rohit\", \"Sharma Traders\"],\\n  \\\"amounts\\\": [{\\\"value\\\": 200, \\\"currency\\\": \\\"INR\\\", \\\"label\\\": \\\"Units\\\"}]\\n}\\n```"
+        val record = extractor.parseForTest(input)
+        assertNotNull(record)
+        assertEquals("Action Items for Delivery", record!!.title)
+        assertTrue(record.summary.isNotBlank())
+        assertEquals(listOf("Rohit", "Sharma Traders"), record.people)
+    }
+
+    @Test
+    fun testLegitimatelyEscapedQuotesStillParse() {
+        // {"title": "He said \"hi\""} is VALID JSON today and must keep parsing to
+        // He said "hi": the unescape must only run after a genuine parse failure.
+        val input = "{\"title\": \"He said \\\"hi\\\"\"}"
+        val repaired = extractor.repairJson(input)
+        assertEquals(input, repaired)
+        val record = extractor.parseForTest(input)
+        assertNotNull(record)
+        assertEquals("He said \"hi\"", record!!.title)
+    }
+
+    @Test
+    fun testAlreadyValidJsonReturnedUnchanged() {
+        val input = """{"title":"Sprint Delivery","summary":"Shipped API","people":["Rohit"],"amounts":[],"tags":[],"actions":[]}"""
+        val repaired = extractor.repairJson(input)
+        assertEquals(input, repaired)
+        val record = extractor.parseForTest(input)
+        assertNotNull(record)
+        assertEquals("Sprint Delivery", record!!.title)
+    }
 }

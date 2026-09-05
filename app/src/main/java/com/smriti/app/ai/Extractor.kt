@@ -1,7 +1,11 @@
 package com.smriti.app.ai
 
+import android.util.Log
 import com.google.gson.Gson
+import com.smriti.app.BuildConfig
 import java.time.LocalDate
+
+private const val TAG = "SmritiExtract"
 
 /**
  * Turns an OCR string plus a voice transcript into a [StructuredRecord].
@@ -35,13 +39,30 @@ class Extractor(private val backend: LlmBackend? = null) {
         val activeBackend = backend ?: return StructuredRecord.fallback(fallbackText)
 
         return try {
+            if (BuildConfig.DEBUG) {
+                Log.i(TAG, "attempt 1 (with OCR)")
+            }
             val prompt1 = buildPrompt(ocrText, transcript, includeOcr = true)
             val response1 = activeBackend.generate(prompt1)
-            parseJson(response1) ?: retryShortened(activeBackend, transcript, fallbackText)
+            if (BuildConfig.DEBUG) {
+                response1.lines().forEach { Log.i(TAG, it) }
+            }
+            val record1 = parseJson(response1)
+            if (BuildConfig.DEBUG) {
+                if (record1 != null) {
+                    Log.i(TAG, "parseJson returned record, actions.size = ${record1.actions.size}")
+                } else {
+                    Log.i(TAG, "parseJson returned null")
+                }
+            }
+            record1 ?: retryShortened(activeBackend, transcript, fallbackText)
         } catch (e: Throwable) {
             try {
                 retryShortened(activeBackend, transcript, fallbackText)
             } catch (retryError: Throwable) {
+                if (BuildConfig.DEBUG) {
+                    Log.i(TAG, "giving up, returning StructuredRecord.fallback(...)")
+                }
                 StructuredRecord.fallback(fallbackText)
             }
         }
@@ -52,13 +73,41 @@ class Extractor(private val backend: LlmBackend? = null) {
         transcript: String,
         fallbackText: String
     ): StructuredRecord {
+        if (BuildConfig.DEBUG) {
+            Log.i(TAG, "attempt 2 (shortened retry)")
+        }
         val prompt2 = buildPrompt(ocrText = "", transcript = transcript, includeOcr = false)
         val response2 = activeBackend.generate(prompt2)
-        return parseJson(response2) ?: StructuredRecord.fallback(fallbackText)
+        if (BuildConfig.DEBUG) {
+            response2.lines().forEach { Log.i(TAG, it) }
+        }
+        val record2 = parseJson(response2)
+        if (BuildConfig.DEBUG) {
+            if (record2 != null) {
+                Log.i(TAG, "parseJson returned record, actions.size = ${record2.actions.size}")
+            } else {
+                Log.i(TAG, "parseJson returned null")
+            }
+        }
+        if (record2 != null) return record2
+        if (BuildConfig.DEBUG) {
+            Log.i(TAG, "giving up, returning StructuredRecord.fallback(...)")
+        }
+        return StructuredRecord.fallback(fallbackText)
     }
 
+    // WHY the schema below is ordered actions-first (measured 2026-09-05, iQOO 15,
+    // Qwen2.5-1.5B q8): with the six-key schema led by title/summary, the model
+    // returned title/summary/people/amounts correctly but omitted "actions" and "tags"
+    // entirely, while a short focused prompt on the same sentence returned both action
+    // items. Small models attend most reliably to what comes first, and actions is what
+    // the product is built on ("what did I commit to?"), so actions leads the schema.
     private fun buildPrompt(ocrText: String, transcript: String, includeOcr: Boolean): String {
         val today = LocalDate.now().toString()
+        // The worked example says "tomorrow", so its date MUST track today or the
+        // example teaches the model that tomorrow == today. Wrong dates are worse
+        // than no dates: see the date policy in PROGRESS.md.
+        val tomorrow = LocalDate.now().plusDays(1).toString()
         val truncatedTranscript = transcript.take(1500)
         val ocrSection = if (includeOcr && ocrText.isNotBlank()) {
             """
@@ -70,12 +119,14 @@ class Extractor(private val backend: LlmBackend? = null) {
         }
 
         return """
-            You are a helpful assistant extracting structured information. Today's date is $today.
-            You must answer with a single JSON object and nothing else.
-            The title must be concise and at most 8 words.
+            Extract actions first. Today's date is $today.
+            Reply with a single JSON object only. Every key is required - never omit one; use [] or "" when empty.
+            Title at most 8 words.
 
             Exact schema:
-            {"title":"","summary":"","people":[],"amounts":[{"value":0,"currency":"INR","label":""}],"tags":[],"actions":[{"text":"","due":"YYYY-MM-DD or null"}]}
+            {"actions":[{"text":"","due":"YYYY-MM-DD or null"}],"title":"","summary":"","people":[],"amounts":[{"value":0,"currency":"INR","label":""}],"tags":[]}
+
+            Example: "Pay Sharma Rs 500 tomorrow" -> {"actions":[{"text":"Pay Sharma Rs 500","due":"$tomorrow"}],"title":"Pay Sharma","summary":"Pay Sharma Rs 500","people":["Sharma"],"amounts":[],"tags":[]}
 
             --- TRANSCRIPT ---
             $truncatedTranscript
@@ -97,7 +148,45 @@ class Extractor(private val backend: LlmBackend? = null) {
         while (jsonSlice.contains(Regex(",\\s*([}\\]])"))) {
             jsonSlice = jsonSlice.replace(Regex(",\\s*([}\\]])"), "$1")
         }
-        return jsonSlice
+        // Unescape fallback (parse-first). WHY parse-first is mandatory: a blind global
+        // replace of \" with " would corrupt legitimately escaped quotes inside string
+        // values — e.g. {"title": "He said \"hi\""} is valid JSON today and must keep
+        // parsing to the title He said "hi" — so the unescape below may only ever run
+        // as a fallback after a genuine parse failure.
+        try {
+            com.google.gson.JsonParser.parseString(jsonSlice)
+            return jsonSlice
+        } catch (e: Exception) {
+            // Genuine parse failure; try the unescaped candidate below.
+        }
+        val candidate = unescapeSlice(jsonSlice)
+        try {
+            com.google.gson.JsonParser.parseString(candidate)
+            return candidate
+        } catch (e: Exception) {
+            return jsonSlice
+        }
+    }
+
+    private fun unescapeSlice(slice: String): String {
+        val out = StringBuilder(slice.length)
+        var i = 0
+        while (i < slice.length) {
+            val c = slice[i]
+            if (c == '\\' && i + 1 < slice.length) {
+                when (slice[i + 1]) {
+                    'n' -> { out.append('\n'); i += 2 }
+                    't' -> { out.append('\t'); i += 2 }
+                    'r' -> { out.append('\r'); i += 2 }
+                    '"' -> { out.append('"'); i += 2 }
+                    '\\' -> { out.append('\\'); i += 2 }
+                    else -> { out.append(c); i += 1 }
+                }
+            } else {
+                out.append(c); i += 1
+            }
+        }
+        return out.toString()
     }
 
     /**
