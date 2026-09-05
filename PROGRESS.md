@@ -608,11 +608,41 @@ The model was right and I was wrong once: my capture-screen spec told it to use 
 and pushes the shutter 12dp left of centre. It implemented what I asked, flagged the error in
 its summary, and I fixed the value.
 
-**Unverified on hardware, in rough order of what would hurt most if wrong**
-- the Room 2->3 migration against a real populated database
-- edit mode's save path, and whether the enrichment guard behaves as intended in practice
-- both mic paths end-to-end: does `stopListening()` actually terminate `transcribe()` promptly
-- the mic bubble's second overlay window on OriginOS, which is aggressive about overlays
-- every screen's appearance: none of this has been seen on a physical display at any point
-- Devanagari in the new faces — none of the three carries it, so Hindi relies on Android's
-  per-glyph system fallback, which is expected to work but has not been seen
+### 2026-09-05 later — verified on the iQOO 15 (SM8850, Android 16, 384dp @ 600dpi)
+
+Everything above was written blind. It has now been installed and exercised on the demo device.
+
+**Passed**
+- **Room 2->3 migration against the real database.** It held 31 records at v2; after the first
+  Room access it was v3 with all 31 intact and `userEdited` present and 0. No crash.
+- **Edit mode end to end.** Edited a title and saved: `userEdited` 0->1, state DONE, text
+  persisted and visible in the timeline.
+- **The enrichment guard genuinely guards.** Forced an edited record AND a control record back
+  to PENDING, restarted, waited for a drain. The enricher logged `Pending enrichment: 1
+  record(s)` — it saw only the control, enriched it in 21.5 s, and never touched the edited one,
+  whose `enrichmentAttempts` stayed at 0.
+- **Both voice-only paths.** In-app mic and mic bubble each produced `AudioRecord start(N)` /
+  `stop(N)` in logcat, and the stop lands on release rather than at the 15 s timeout — so
+  `stopListening()` does terminate `transcribe()` promptly. Both went red while live. Neither
+  saved a record from silence, so `isWorthSaving` holds on device.
+- **Both overlay windows attach on OriginOS** — "Bubble overlay attached" and "Mic bubble
+  overlay attached" — and read as intended over another app: a pale disc with a red ring and a
+  smaller dark disc below it.
+
+**Four defects found by looking, all fixed in 3ca3ac8**
+- a #EEEEEE band above and below the camera preview: `SmritiApp`'s outer Scaffold was insetting
+  every screen and the paper window background showed through. Removing it also removed a double
+  inset the other three screens were paying twice for.
+- status bar icons unreadable over the preview once it ran edge to edge
+- the hint pill bleeding off both screen edges, and its 49-character string orphaning "only"
+- the detail metadata line colliding with itself when the model label wrapped
+
+**Still unverified**
+- Devanagari in the new faces. None of the three carries it, so Hindi relies on Android's
+  per-glyph system fallback. Expected to work; no Hindi record was captured to prove it.
+- A voice-only record end to end WITH speech. Silence was tested (correctly saves nothing);
+  nobody spoke into the device, so no voice-only row has ever been written.
+- The bubble's screen-capture path after the recolour, and bubble survival over hours.
+- Re-enrichment inserts a duplicate set of tasks. Not reachable in normal use — a record is
+  enriched once — but forcing a DONE record back to PENDING duplicates its tasks. Pre-existing,
+  out of scope, noted here because a demo reset could hit it.
