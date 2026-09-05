@@ -1,0 +1,159 @@
+Add an edit mode to the memory detail screen. Edit files directly.
+Only ONE file changes: app/src/main/java/com/smriti/app/ui/DetailScreen.kt (which contains both
+DetailViewModel and the composables).
+
+WHY
+A memory in this app is written once by a 1B model running on the phone and can never be
+corrected. The model mis-hears names, writes a title from the first six words of a transcript,
+invents a tag, misses an amount. Today the user watches that happen and can do nothing. Open a
+memory from the timeline and there is not one control on the screen that changes anything except
+a task checkbox.
+
+The persistence layer for this already exists — do not rebuild it, do not add a migration, do not
+add a DAO method. Read app/src/main/java/com/smriti/app/data/RecordDao.kt first and use exactly
+what is there:
+    applyUserEdit(id, title, summary, people, amounts, tags, embedding)
+    updateTask(id, text, dueDateMillis)
+    deleteTask(id)
+    insertTask(task): Long
+    setTaskDone(id, done)
+`applyUserEdit` sets a userEdited flag that stops the model from ever overwriting these fields
+again. That is why saving must go through it and not through any query you write yourself.
+
+WHAT IS EDITABLE, AND WHAT IS NOT
+  editable:  title, summary, people, tags, amounts, and each task's text and done state
+  read-only: the transcript ("What you said") and the OCR text ("What the camera read")
+The two read-only ones are the raw record of what actually happened — what the microphone heard
+and what the camera saw. They are evidence, not a draft. Leave both CollapsibleRawSection calls
+exactly as they are, in view mode and in edit mode alike.
+
+THE INTERACTION
+
+A pencil in the top-right of the TopAppBar (`actions = { ... }`, Icons.Default.Edit, tinted
+ColorCream, contentDescription "Edit"). Tapping it enters edit mode.
+
+In edit mode the same TopAppBar swaps its trailing icon for two:
+    Icons.Default.Close  ("Discard changes")  -> leaves edit mode, throws the draft away
+    Icons.Default.Check  ("Save")             -> writes and leaves edit mode
+tinted ColorCream and ColorAmber respectively. The back arrow stays where it is; pressing it
+while editing also discards — do not add a confirmation dialog for either, this is a note-taking
+app and the cost of a mistake is retyping one line.
+
+The screen must not jump when the mode flips. Same scroll container, same order of sections,
+same spacing. Each editable region is replaced in place by its editor, nothing is added above or
+below, and the photo (or its absence) stays exactly where it is.
+
+THE EDITORS
+
+- Title:   OutlinedTextField, single line, seeded with the current title, placeholder "Title".
+- Summary: OutlinedTextField, multi-line (minLines 3), seeded with the current summary,
+           placeholder "Summary".
+  Both: ColorCream text, ColorAmber focused border and cursor, ColorCream-at-0.3 unfocused
+  border, transparent container. Use OutlinedTextFieldDefaults.colors(...) — do not hand-roll a
+  BasicTextField.
+
+- People, tags and amounts are three lists of strings, currently rendered as chips inside a
+  FlowRow (people and tags together, amounts as a bulleted Card). In edit mode render each of the
+  three as its own labelled block:
+      a FlowRow of the current values, each chip keeping ITS OWN existing colours — people chips
+      stay ColorChipBg with the cream border, tag chips stay amber-tinted, amounts get a chip in
+      the amber Card's spirit — and each chip gains a small trailing Icons.Default.Close (14.dp,
+      contentDescription "Remove <value>") that deletes that value from the draft;
+      below the row, a single-line OutlinedTextField with placeholder "Add person" / "Add tag" /
+      "Add amount" and a trailing Icons.Default.Add IconButton that appends the trimmed text and
+      clears the field. Pressing the keyboard's done/enter action does the same thing
+      (KeyboardActions + ImeAction.Done). Ignore blanks and exact duplicates silently.
+  Label each block with the same "Amounts"-style heading already used in this file
+  (titleMedium, bold, ColorAmber): "People", "Tags", "Amounts". In edit mode show all three
+  blocks even when the list is empty — an empty list is the main reason someone opens the editor.
+
+- Tasks: keep the existing Card and Checkbox. In edit mode each row becomes
+      [checkbox] [OutlinedTextField with the task text] [Icons.Default.Delete, "Delete task"]
+  and below the last row a "＋ Add task" TextButton (ColorAmber) that appends a blank draft row
+  and focuses it. A task whose text is blank when Save is pressed is deleted rather than saved.
+  Do NOT build a date picker — task due dates keep whatever value they already have. Say so in
+  your summary.
+
+THE DRAFT
+
+Hold the whole draft in remember { mutableStateOf(...) } keyed on the record id, seeded from the
+record when edit mode is entered — NOT bound directly to the StateFlow. The record is collected
+from a Room Flow, so it re-emits while the user is typing (the Enricher may still be running on
+this very record and will write ocrText to it). Binding a TextField straight to that flow means
+the field's contents get replaced mid-keystroke. Seed once on entering edit mode and do not
+re-seed while the mode is open.
+
+THE SAVE
+
+Add to DetailViewModel:
+
+    fun save(recordId: Long, title: String, summary: String, people: List<String>,
+             tags: List<String>, amounts: List<String>, tasks: List<TaskDraft>)
+
+with a small `data class TaskDraft(val id: Long, val text: String, val done: Boolean)` where
+id == 0L means a new task. In viewModelScope.launch:
+  - serialise people/tags/amounts with Gson().toJson(...) — the same Gson the file already uses
+    to read them, so the round trip is symmetric
+  - recompute the embedding, because recall scores against it and a corrected title that recall
+    cannot find is worse than no correction at all:
+        Enricher.embedFor(getApplication(), title, summary, ocrText = "", transcript = <record's transcript>)
+    Read Enricher.embedFor's signature before calling it. It is a suspend fun and it returns null
+    when the embedder asset is missing — null is fine, pass it straight through.
+  - call dao.applyUserEdit(...)
+  - for tasks: existing id with blank text -> deleteTask; existing id with text -> updateTask
+    (keep its current dueDateMillis) and setTaskDone; id == 0L with text -> insertTask(
+    TaskEntity(recordId = recordId, text = ..., done = ...)); id == 0L with blank text -> ignore.
+  - trim the title, summary and every list entry before writing. A title of "" must be stored as
+    "" and not as whitespace — the view already falls back to "Untitled" for a blank title.
+
+A voice-only memory has photoPath = "" and shows no image. Do not add an editor for the photo,
+and do not change the photo block.
+
+CONSTRAINTS
+- Change NO file other than DetailScreen.kt. In particular do not touch RecordDao, SmritiDb,
+  RecordEntity, Enricher, TimelineScreen, CaptureScreen or MainActivity.
+- Do NOT make the transcript or the OCR text editable.
+- Do NOT add a delete-the-whole-record action. That is a separate decision.
+- Do NOT add a new navigation route or a dialog. Edit mode is the same screen.
+- Keep the file's existing colour constants, typography and card shapes. No new colours.
+- material-icons-extended is already a dependency; Edit, Check, Close, Add and Delete are all
+  available from Icons.Default.
+- Kotlin 2.0.21. Compose BOM 2024.09.03. minSdk 26, targetSdk 36.
+- This app is offline-first; the `offline` flavor is the one that matters. The `devcloud` flavor
+  is on hold — do not add features to it, but it MUST still compile.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+Print a summary of what changed and why.
+
+ADDENDUM — one defect to fix while you are here, in RecordDao.kt
+
+This is the only file outside DetailScreen.kt you may touch, and only for the three queries
+named below. Do not change anything else in it.
+
+The problem. applyEnrichment is now guarded with `AND userEdited = 0`, so a user-edited record
+matches zero rows and its enrichmentState is never set to 'DONE'. It was set to 'RUNNING' by
+markEnrichment just before, so it stays 'RUNNING'. The next drain calls resetRunningToPending,
+flips it back to 'PENDING', picks it up again, and runs the whole LLM extraction on it a second
+and third time — inserting a duplicate set of tasks each time, until enrichmentAttempts hits 3.
+The user sees their edited memory sprout duplicate tasks and the phone burns three model runs
+on a record whose text is already final.
+
+The fix, three queries:
+
+1. applyUserEdit — add `enrichmentState = 'DONE', enrichedAt = :at` to its SET clause and a new
+   `at: Long` parameter. Saving an edit terminates the record: the user has taken ownership of
+   it, the shimmer in the UI stops, and the enricher has no reason to look at it again. Pass
+   System.currentTimeMillis() from the ViewModel.
+
+2. pendingEnrichment — add `AND userEdited = 0` to its WHERE clause.
+
+3. resetRunningToPending — add `AND userEdited = 0` to its WHERE clause. Without this, a record
+   edited while it was RUNNING would be flipped to PENDING and then skipped by pendingEnrichment
+   forever, leaving it stuck showing "Queued" and a shimmer that never resolves.
+
+Update app/src/test/java/com/smriti/app/data/RecordDaoQueriesTest.kt so it still passes and so it
+asserts the new `enrichmentState = 'DONE'` in applyUserEdit. That test reads query strings out of
+the class file's constant pool because Room's @Query has BINARY retention — read it before you
+change it.

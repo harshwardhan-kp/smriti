@@ -1,0 +1,112 @@
+Add a second, smaller mic bubble to the floating overlay: voice-only capture from anywhere on the
+phone, with no screenshot. Edit files directly.
+
+WHY
+The floating bubble can only make one kind of memory: long-press it and it grabs the screen AND
+listens. There is no way to record a spoken note from outside the app without also capturing
+whatever happens to be on screen. Most of what a person wants to remember while walking around a
+warehouse or standing in a shop has nothing to do with the phone's display, and the screenshot is
+then noise stored forever. It also means the bubble is useless until the user has granted
+MediaProjection consent, which is a dialog they may decline.
+
+The in-app camera screen already got this treatment in an earlier task: a 56.dp mic button beside
+the 84.dp shutter, hold to talk, release to stop. Read
+app/src/main/java/com/smriti/app/ui/CaptureScreen.kt and
+app/src/main/java/com/smriti/app/capture/CapturePipeline.kt first. This task is the same idea for
+the overlay, and it must follow the same conventions.
+
+STORAGE CONVENTION — already established, do not change it
+A voice-only record is a RecordEntity with `photoPath = ""`. No new column, no new table, no
+placeholder file. A blank transcript is NOT saved at all: an empty photo plus empty words is a
+row the user can neither read nor delete. CapturePipeline already contains the predicate for
+this — find it (it is an internal fun on the companion, around "isWorthSaving") and reuse it
+rather than writing the check twice.
+
+CHANGES
+
+1. app/src/main/java/com/smriti/app/capture/BubbleCapturePipeline.kt
+   Add, beside the existing `capture(photoFile: File): Long`:
+
+       suspend fun captureVoiceOnly(): Long
+
+   Returns the new record id, or -1L when the transcript is blank and nothing was saved. Same
+   Dispatchers.IO wrapper, same RecordEntity construction as capture() but with photoPath = "",
+   same titleFor / embedFor calls, same Enricher.request(context) afterwards. Factor the shared
+   body so the two entry points cannot drift; a private suspend fun taking the photo path is
+   enough.
+
+2. app/src/main/java/com/smriti/app/capture/BubbleService.kt
+   Add a SECOND overlay view — do not create a second Service. One service, one foreground
+   notification, two views. A second foreground service would mean a second permanent
+   notification for the same feature, and the user would have to enable two things.
+
+   The mic bubble:
+     - 44.dp equivalent in pixels (the capture bubble is 60.dp normal / 72.dp live). Compute it
+       from resources.displayMetrics.density exactly as bubbleSizeNormal is computed.
+     - Its own GradientDrawable pair, in the same style as normalDrawable / liveDrawable:
+         idle: OVAL, translucent ink 0xCC0B0B0B, 2.dp stroke in amber 0x99F2B705
+         live: OVAL, solid red 0xFFE53935, 4.dp stroke in cream 0xFFFBF8F1
+       The colour inversion is deliberate — the mic bubble must never be mistaken for the amber
+       capture bubble at a glance, and red means the microphone is open.
+     - Positioned by default directly BELOW the capture bubble, offset by the capture bubble's
+       height plus 8.dp, clamped to the screen the same way. Its own saved position under its own
+       prefs keys ("mic_bubble_x", "mic_bubble_y"). Reuse clampLayoutParams by generalising it to
+       take a LayoutParams argument rather than duplicating the maths.
+     - Draggable independently, using the same touch-slop logic.
+     - HOLD to talk, release to stop — the same LONG_PRESS_TIMEOUT_MS handler pattern the capture
+       bubble uses. A short tap shows a Toast "Hold to record a voice note" and does nothing else.
+     - No MediaProjection, no ScreenCaptureService, no consent activity, no
+       ScreenCaptureService.isArmed() check anywhere on this path. That is the entire point:
+       this bubble works when consent has never been granted.
+     - contentDescription on the view for accessibility: "Record a voice note".
+
+   The recording:
+     - On long-press: set the mic bubble live, launch on serviceScope + Dispatchers.IO, call
+       pipeline.captureVoiceOnly(). Use its own job field (micCaptureJob), NOT the existing
+       captureJob — a screen capture in flight must not be cancelled by starting a voice note.
+     - On release: call (asr as? PushToTalk)?.stopListening(), which is what ends transcribe().
+       The existing stopCaptureAndSave() does the same for the other bubble; do not merge them.
+     - When it finishes: set the mic bubble back to idle on Dispatchers.Main, and Log.i the
+       record id. If captureVoiceOnly returned -1L, show a Toast "Nothing heard" — the user held
+       the bubble and got no record, and silence about that looks like a crash.
+     - The two bubbles share one `asr` instance. Guard against both recording at once: if a
+       capture is already in flight (either kind), the second long-press must show a Toast
+       "Already recording" and do nothing. Track this with a single @Volatile Boolean set and
+       cleared in a finally block on both paths.
+
+   Lifecycle, all of which the capture bubble already does and the mic bubble must match:
+     - attach it in the same place attachBubbleView() runs, including the sticky-restart path
+       where onStartCommand receives a null intent
+     - track its attachment with its own @Volatile flag, for the same reason the existing
+       bubbleAttached flag exists (addView is asynchronous, isAttachedToWindow lies immediately
+       after it returns, and a double add throws and used to kill the service)
+     - remove it in onDestroy inside its own try/catch
+     - a failure to add the MIC bubble must NOT stopSelf() the service. The capture bubble is the
+       primary feature; log the failure and carry on with one bubble rather than losing both.
+
+   Update the foreground notification text, which currently reads "Long-press the bubble to
+   capture and narrate", to cover both: keep the title, and set the text to
+       "Hold the amber bubble to capture the screen · hold the red one for a voice note"
+   Change nothing else about the notification, its channel, its id or its icon.
+
+3. app/src/test/java/com/smriti/app/capture/BubbleServiceTest.kt
+   Read what is already there and extend it in the same style — these are plain JVM tests with no
+   Android framework and no Robolectric, and that must not change. Cover whatever of the new work
+   is pure logic: the default mic-bubble offset arithmetic and the clamp, extracted as internal
+   pure functions if they are not already. Do not attempt to start a Service in a unit test.
+
+CONSTRAINTS
+- Do NOT touch ScreenCaptureService, ScreenCaptureConsentActivity, or the existing capture
+  bubble's gesture handling, sizes, colours or MediaProjection flow.
+- Do NOT touch CapturePipeline, CaptureScreen, CaptureViewModel, DetailScreen or TimelineScreen.
+- Do NOT add a Service, a permission, a manifest entry, a database column or a migration.
+  SYSTEM_ALERT_WINDOW, RECORD_AUDIO and FOREGROUND_SERVICE_SPECIAL_USE are already declared.
+- Do NOT add an AccessibilityService.
+- Kotlin 2.0.21. minSdk 26, targetSdk 36.
+- This app is offline-first; the `offline` flavor is the one that matters. The `devcloud` flavor
+  is on hold — do not add features to it, but it MUST still compile.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+Print a summary of what changed and why.

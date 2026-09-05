@@ -8,7 +8,6 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -25,14 +24,6 @@ import androidx.core.view.WindowCompat
  * exists so that any stock Material 3 component still lands in the right palette, but screens
  * should reach for [S] directly.
  */
-
-// Retained so screens that have not been migrated yet still compile. Both are on their way out;
-// use S.Amber and S.Paper instead.
-@Deprecated("Use S.Amber", ReplaceWith("S.Amber", "com.smriti.app.ui.theme.S"))
-val ColorAmber = Color(0xFFFEA710)
-
-@Deprecated("Use S.Paper", ReplaceWith("S.Paper", "com.smriti.app.ui.theme.S"))
-val Cream = Color(0xFFEEEEEE)
 
 private val SmritiColorScheme = lightColorScheme(
     primary = S.Red,

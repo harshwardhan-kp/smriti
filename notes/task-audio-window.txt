@@ -1,0 +1,58 @@
+Fix audio truncation at both ends of a capture. Edit files directly.
+
+THE DEFECT (observed on an iQOO 15 today)
+Live transcripts come back clipped: "Uh, are you-" (Whisper's trailing hyphen marks a cut-off
+utterance) and "remember it for less what a lot during". The SAME Whisper model transcribes
+reference WAVs word-perfectly, so the model and the WAV decode are fine. The recording WINDOW
+is wrong, at both ends:
+
+  LOSS 1 - the microphone opens too late.
+    CapturePipeline.run() currently does:
+        val photoFile = camera.capture()          // blocks on the camera shutter
+        val transcript = if (withVoice) asr.transcribe() else ""   // mic opens only HERE
+    The user long-presses and begins speaking at once, but nothing is recorded until after the
+    photo completes. The first words are never captured.
+
+  LOSS 2 - the microphone closes the instant the finger lifts.
+    CaptureScreen's detectTapGestures onPress -> tryAwaitRelease() -> vm.stopVoice() ->
+    PushToTalk.stopListening() -> recorder.stop(). People release as they finish the last
+    syllable, so the final word is clipped.
+
+FIX 1 - start recording in parallel with the camera (app/src/main/java/com/smriti/app/capture/CapturePipeline.kt)
+  Launch the ASR and the camera capture CONCURRENTLY so the microphone opens immediately:
+      coroutineScope {
+          val asrDeferred = async { if (withVoice) asr.transcribe() else "" }
+          val photoDeferred = async { camera.capture() }
+          ...
+      }
+  Emit CaptureStage.Photo first as now, and emit CaptureStage.Listening immediately when
+  withVoice is true (do not wait for the photo). Await both before inserting the record.
+  The record insert, the emit(Done), and Enricher.request(context) must stay exactly as they
+  are now - do NOT reintroduce any language-model or OCR work on this path.
+  Note the file previously used exactly this coroutineScope/async shape for OCR+ASR; match that
+  style.
+
+FIX 2 - trailing pad before stopping (app/src/offline/java/com/smriti/app/capture/SherpaWhisperAsr.kt)
+  In transcribe(), after the push-to-talk deferred completes (i.e. the user released) and BEFORE
+  calling recorder.stop(), wait a short trailing pad so the final syllable is captured:
+      private const val TRAILING_PAD_MS = 700L
+  Apply it ONLY when the deferred completed because of a release, NOT when withTimeoutOrNull
+  expired (the timeout path already recorded the full window and padding it just wastes time).
+  Add a comment explaining WHY: humans release the button as they finish the last word, so
+  cutting the microphone at that exact instant clips it.
+  Do the same in app/src/offline/java/com/smriti/app/capture/VoskAsr.kt so the fallback path
+  behaves identically - the two must not diverge.
+
+CONSTRAINTS
+- Do NOT change AudioRecorder.kt. It is correct: stop() joins the writer thread, flushes and
+  patches the WAV header before returning.
+- Do NOT change CaptureScreen.kt or any other UI file.
+- Do NOT change Extractor, Enricher, Ocr, the DAO, or the Room schema.
+- Do NOT reintroduce Extractor/BackendFactory/Ocr into CapturePipeline - capture stays instant.
+- Keep the existing 15 s maxMillis timeout behaviour intact.
+- Kotlin 2.0.21, coroutines.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- Offline flavor must not gain a network permission.
+
+Print a summary of files changed and why.

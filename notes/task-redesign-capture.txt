@@ -1,0 +1,177 @@
+================================================================================
+SMRITI VISUAL LANGUAGE — HOUSE RULES
+Read this whole block before you change anything. It is not advisory.
+================================================================================
+
+The app is being moved onto the design language of antimattr.one. That language has already
+been ported into the codebase for you. Your job is to APPLY it, not to design anything. If a
+value you need is not in the files below, you are doing something the design does not call for
+— use the nearest thing that IS there.
+
+READ THESE THREE FILES FIRST, IN FULL:
+    app/src/main/java/com/smriti/app/ui/theme/Tokens.kt      — object S: every colour, every spacing step, every radius
+    app/src/main/java/com/smriti/app/ui/theme/Type.kt        — object SmritiType: every text style
+    app/src/main/java/com/smriti/app/ui/components/Primitives.kt — BracketLabel, NodeSquare, HairlineRule, DashedRule, SmritiButton, SmritiOutlineButton, SmritiChip, ChipKind, DisplayHeading, SectionLabel
+
+ABSOLUTE RULES
+
+1. NO LITERAL COLOURS. Not one `Color(0xFF...)` may survive in the file you are editing. Every
+   screen currently declares its own private `ColorAmber` / `ColorInk` / `ColorCream` /
+   `ColorCardBg` / `ColorChipBg` / `ColorRedAlert` at the top — DELETE those declarations and
+   replace every use with a member of `S`. The mapping is fixed:
+       ColorInk        (was the near-black page)  -> S.Paper        [the page is now near-white]
+       ColorCream      (was the light type)       -> S.Ink          [type is now near-black]
+       ColorCream@0.6  (was muted type)           -> S.Muted
+       ColorCream@0.45 (was faintest type)        -> S.MutedSoft
+       ColorCardBg / ColorChipBg (dark cards)     -> S.PaperSunk
+       ColorAmber      (was the accent)           -> S.Red          [the accent is now red]
+       ColorRedAlert   (was the live/overdue red) -> S.Red
+       a "still working" state                    -> S.Amber
+       a "done / settled" state                   -> S.Green
+       any border or divider                      -> S.Hairline
+
+2. NO LITERAL TEXT STYLES. No `fontSize =`, no `fontFamily =`, no `MaterialTheme.typography.*`,
+   no `fontWeight =` except where a SmritiType style already carries it. Every Text() gets
+   `style = SmritiType.<something>`. The mapping is fixed:
+       a screen's own title / a record's title  -> SmritiType.DisplaySmall  (Instrument Serif)
+       a card title                             -> SmritiType.Title
+       prose, summaries                         -> SmritiType.Body
+       a card's supporting line                 -> SmritiType.BodySmall
+       a control's sans label                   -> SmritiType.Label
+       timestamps, tags, counts, states         -> SmritiType.Meta / MetaMedium
+       any button label                         -> handled by SmritiButton, do not style it
+       transcripts and OCR output               -> SmritiType.Mono
+
+3. EVERY PIECE OF UI COPY IS LOWERCASE. Every string on antimattr.one is lowercase, including
+   its own name. "Timeline" becomes "timeline". "Open tasks" becomes "open tasks". "Could not
+   extract" becomes "could not extract". This applies to headings, labels, buttons, empty
+   states, placeholders and content descriptions' visible counterparts. It does NOT apply to
+   user data (a transcript, a person's name, a title the model wrote) — never lowercase what a
+   person said or wrote. It does not apply to contentDescription strings, which are for a
+   screen reader and should stay ordinary sentence case.
+
+4. NO LITERAL SPACING. Use S.xs (4), S.sm (6), S.md (10), S.gutter (16), S.lg (24), S.xl (32),
+   S.section (44). Horizontal page padding is S.gutter and nothing else.
+
+5. NO LITERAL RADII. Use S.r6 (the default — use this unless told otherwise), S.r8, S.r24,
+   S.pill. 12.dp and 16.dp corners are gone from this app.
+
+6. NO ELEVATION, NO SHADOWS. This language is drawn, not stacked. A card is separated by a
+   hairline border and a background one step back (S.PaperSunk), never by a shadow. If a
+   Material component insists on elevation, set it to 0.dp.
+
+7. Metadata wears brackets. Any small mono fact — a timestamp, a state, a count, a due date —
+   goes through `BracketLabel("...")`, which renders `[label]` with the brackets in red. Do not
+   hand-write square brackets into a string; call the component.
+
+WHAT NOT TO BREAK
+
+You are changing appearance ONLY. Do not change any of the following, in any file:
+  - navigation, callbacks, or the shape of any function's parameters
+  - ViewModels, DAOs, Flows, or anything that reads or writes the database
+  - which composable is rendered for which enrichmentState
+  - LazyColumn item keys (they are prefixed "task-" / "record-" to stop a key collision that
+    used to crash the timeline on scroll — leave them exactly as they are)
+  - the try/catch around BitmapFactory.decodeFile, or the branch that renders a mic glyph when
+    record.photoPath is blank (that is how a voice-only memory is drawn)
+  - any contentDescription that already exists
+
+TOOLCHAIN
+- Kotlin 2.0.21. Compose BOM 2024.09.03. minSdk 26, targetSdk 36.
+- material-icons-extended is available.
+- This app is offline-first; the `offline` flavour is the one that matters. `devcloud` is on
+  hold — add nothing to it, but it MUST still compile.
+- Must build BOTH flavours and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+================================================================================
+
+TASK: restyle the capture screen.
+ONE FILE CHANGES: app/src/main/java/com/smriti/app/ui/CaptureScreen.kt
+
+THE ONE EXCEPTION TO THE HOUSE RULES
+This screen sits on top of a live camera preview, so its chrome stays DARK. Light chrome over
+moving video is unreadable, and that is a legibility fact, not a style preference. Rule 1's
+colour mapping therefore does not apply here in the usual direction. Use instead:
+    the page                  -> S.InkDeep      (only ever seen before the preview binds)
+    any chrome background     -> S.InkDeep.copy(alpha = 0.75f)  — a scrim over video, never opaque
+    type on that chrome       -> S.OnDark
+    muted type on that chrome -> S.OnDark.copy(alpha = 0.65f)
+    borders on that chrome    -> S.HairlineOnDark
+    live / recording          -> S.Red
+Every OTHER house rule applies in full: lowercase copy, SmritiType styles, S spacing, S.r6
+radii, no literal colours, no elevation, brackets on metadata.
+
+WHAT THIS SCREEN IS
+Full-bleed camera preview. A top row with "Ask", the build badge, and "Timeline". A status pill
+under it while a capture runs. At the bottom, a hint line, then a Row of [56dp mic] [84dp
+shutter] [spacers that keep the shutter centred].
+
+CHANGES
+
+1. Delete the four private `Color(0xFF...)` vals at the top of the file.
+
+2. TOP ROW.
+   - "Ask" and "Timeline" TextButtons: label lowercase — "ask", "timeline" — styled
+     `SmritiType.Button`, colour S.OnDark. Remove the fontSize/fontWeight arguments.
+   - The build badge in the middle: replace the whole Surface + Text with
+         BracketLabel(
+             text = BuildBadge.label,
+             labelColor = S.OnDark.copy(alpha = 0.65f),
+             bracketColor = S.Red
+         )
+     and delete the Surface, its border and its shape. BuildBadge.label currently reads
+     "OFFLINE · ON-DEVICE" (offline flavour) and "DEV · CLOUD MODELS" (devcloud). BracketLabel
+     lowercases for you, so leave those strings alone — do NOT edit either BuildBadge.kt file.
+     The badge becomes `[offline · on-device]`, which is exactly antimattr's `[shipping starts
+     Q4-2026]`.
+
+3. STATUS PILL (the `stage?.let { ... }` block). Keep its position and its
+   `Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp)`.
+   - Replace the Surface's colour with S.InkDeep.copy(alpha = 0.75f), shape S.r6, and
+     `BorderStroke(S.hairlineWidth, if (isFailed) S.Red else S.HairlineOnDark)`.
+   - Replace the inner Text with `BracketLabelLive(statusText, color = if (isFailed) S.Red else S.OnDark)`
+     inside `Modifier.padding(horizontal = S.gutter, vertical = S.sm)`.
+   - Lowercase every branch of statusText: "capturing", "reading the image", "listening",
+     "understanding, on this phone", "saved". The Failed branch shows `currentStage.reason`
+     verbatim — that is a message from the system, so do NOT lowercase it.
+
+4. HINT LINE. Lowercase all three branches and re-word them so they read as instrument
+   markings rather than instructions:
+       isMicHeld    -> "listening — voice only, release to stop"
+       isShutterHeld-> "listening — release to stop"
+       else         -> "tap for a photo · hold to add voice · hold the mic for voice only"
+   Style: `SmritiType.Meta` in both states (drop the fontWeight switch — MetaMedium when
+   listening, Meta otherwise, is the only weight change allowed). Colour S.Red when either is
+   held, S.OnDark.copy(alpha = 0.65f) otherwise. Background
+   `S.InkDeep.copy(alpha = 0.6f)` with shape S.r6, padding `horizontal = S.md, vertical = S.xs`.
+
+5. THE SHUTTER. It is currently a solid amber disc. Amber is no longer the accent, and red now
+   means "live", so the shutter must not be red at rest or the live state has nothing left to
+   say. Make it white:
+       - idle: 84.dp circle, `background(S.White, CircleShape)`.
+       - held: unchanged structure — `border(4.dp, S.Red, CircleShape)` then `.padding(6.dp)`
+         then the white fill. Keep `isShutterListening` driving it exactly as it does now.
+   Do not change the size, the gesture handler, the onTap/onLongPress bodies, or
+   `isVoiceOnlyCapture`.
+
+6. THE MIC BUTTON. Keep 56.dp and keep the gesture handler untouched.
+       - idle: border `2.dp, S.OnDark.copy(alpha = 0.7f), CircleShape`, transparent fill,
+         Icons.Default.Mic tinted S.OnDark.
+       - held: border `4.dp, S.Red, CircleShape`, fill `S.RedTint`, icon tinted S.Red.
+     (Today the icon stays cream when held — it should go red with everything else.)
+
+7. Tidy the bottom Row: it currently ends with `Spacer(24.dp)` followed by `Spacer(56.dp)`.
+   Replace those two with a single `Spacer(Modifier.width(56.dp + S.lg))` and set the Row's
+   arrangement to `Arrangement.spacedBy(S.lg, Alignment.CenterHorizontally)`, removing the
+   explicit spacer between the mic and the shutter. The shutter must remain optically centred
+   on the screen — verify the arithmetic yourself and say in your summary that you did.
+
+8. Bottom Column padding: replace `padding(bottom = 36.dp)` with `padding(bottom = S.xl)`, and
+   `Spacer(height(18.dp))` with `Spacer(height(S.gutter))`.
+
+DO NOT change: the AndroidView/PreviewView block, vm.bindCamera, the LaunchedEffect that
+navigates on Done, vm.consumeTerminalStage, the gesture logic, or any state variable name.
+
+Print a summary of what changed, and state explicitly whether the shutter is still centred.

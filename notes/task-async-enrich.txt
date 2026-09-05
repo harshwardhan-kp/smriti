@@ -1,0 +1,115 @@
+Make capture instant by moving LLM extraction off the capture path. Edit files directly.
+
+THE DEFECT (measured on an iQOO 15 today)
+CapturePipeline.run() does: photo -> asr.transcribe() -> BackendFactory.create() ->
+Extractor.extract() -> dao.insertRecord() -> emit(Done). The transcript exists about 2 seconds
+in, but the record is not written until the language model finishes, which takes 30-45 SECONDS
+on device. So the user stares at a spinner for ~40s before seeing the photo and words that were
+ready almost immediately.
+
+REQUIRED: the record must be inserted and shown as soon as the transcript exists. All model work
+moves to a background pass that updates the record afterwards.
+
+1. app/src/main/java/com/smriti/app/data/RecordEntity.kt
+   Add these columns, ALL with defaults so existing rows remain valid:
+       val enrichmentState: String = "PENDING",   // PENDING | RUNNING | DONE | FAILED
+       val enrichmentAttempts: Int = 0,
+       val enrichedAt: Long? = null,
+       val enrichmentModel: String? = null,
+       val enrichmentError: String? = null
+   Update equals() and hashCode() to include them, matching the existing hand-written style.
+
+2. app/src/main/java/com/smriti/app/data/SmritiDb.kt
+   Bump version = 1 -> 2 and add a REAL migration. Do NOT use
+   fallbackToDestructiveMigration() under any circumstances — it would delete every record the
+   user has. Add:
+       val MIGRATION_1_2 = object : Migration(1, 2) {
+           override fun migrate(db: SupportSQLiteDatabase) {
+               db.execSQL("ALTER TABLE records ADD COLUMN enrichmentState TEXT NOT NULL DEFAULT 'DONE'")
+               db.execSQL("ALTER TABLE records ADD COLUMN enrichmentAttempts INTEGER NOT NULL DEFAULT 0")
+               db.execSQL("ALTER TABLE records ADD COLUMN enrichedAt INTEGER")
+               db.execSQL("ALTER TABLE records ADD COLUMN enrichmentModel TEXT")
+               db.execSQL("ALTER TABLE records ADD COLUMN enrichmentError TEXT")
+           }
+       }
+   and wire it with .addMigrations(MIGRATION_1_2) on the databaseBuilder.
+   NOTE the default is 'DONE' for EXISTING rows — they were already extracted under the old
+   synchronous path, so they must not be re-enriched. New rows default to 'PENDING' via the
+   Kotlin default in the entity.
+
+3. app/src/main/java/com/smriti/app/data/RecordDao.kt — add:
+       @Query("SELECT * FROM records WHERE enrichmentState = 'PENDING' AND enrichmentAttempts < 3 ORDER BY createdAt ASC")
+       suspend fun pendingEnrichment(): List<RecordEntity>
+
+       @Query("UPDATE records SET enrichmentState = :state, enrichmentAttempts = enrichmentAttempts + :attemptDelta, enrichmentError = :error WHERE id = :id")
+       suspend fun markEnrichment(id: Long, state: String, attemptDelta: Int, error: String?)
+
+       @Query("UPDATE records SET title = :title, summary = :summary, peopleJson = :people, amountsJson = :amounts, tagsJson = :tags, embedding = :embedding, enrichmentState = 'DONE', enrichedAt = :at, enrichmentModel = :model, enrichmentError = NULL WHERE id = :id")
+       suspend fun applyEnrichment(id: Long, title: String, summary: String, people: String, amounts: String, tags: String, embedding: ByteArray?, at: Long, model: String)
+
+       @Query("SELECT COUNT(*) FROM records WHERE enrichmentState = 'PENDING'")
+       suspend fun pendingCount(): Int
+
+4. app/src/main/java/com/smriti/app/capture/CapturePipeline.kt — THE CORE CHANGE
+   run() must NO LONGER call BackendFactory or Extractor at all. New order:
+       emit(Photo); photoFile = camera.capture()
+       if (withVoice) emit(Listening)
+       transcript = if (withVoice) asr.transcribe() else ""
+       // insert immediately with a provisional title taken from the transcript
+       record = RecordEntity(
+           createdAt=now, photoPath=..., ocrText="", transcript=transcript,
+           title = titleFor("", transcript, ""),   // existing helper already handles this
+           summary = "", peopleJson="[]", amountsJson="[]", tagsJson="[]",
+           embedding = embedFor("", "", "", transcript),   // transcript-only embedding, see below
+           enrichmentState = "PENDING"
+       )
+       recordId = dao.insertRecord(record)
+       emit(Done(recordId))
+       then fire-and-forget Enricher.request(context)
+   Keep emitting CaptureStage.Thinking? NO — remove that emit, there is no longer a blocking
+   think step. Leave the Thinking member declared in the sealed interface for compatibility with
+   a comment, exactly as was done for Reading.
+
+   IMPORTANT — keep embedding at capture. The existing comment explains why: embedding lazily
+   makes the first Ask after a capture silently fall back to keyword scoring, which looks like
+   the feature is broken. Embedding the transcript is cheap and needs no language model. The
+   enrichment pass re-embeds with title+summary afterwards.
+
+5. CREATE app/src/main/java/com/smriti/app/ai/Enricher.kt
+       object Enricher {
+           fun request(context: Context)      // debounced trigger, safe to call repeatedly
+           suspend fun drain(context: Context) // process every PENDING record
+       }
+   Behaviour:
+     - request() debounces ~20 seconds on an application-scoped CoroutineScope
+       (SupervisorJob + Dispatchers.IO). Repeated calls within the window collapse into one run.
+       Guard with a Mutex/AtomicBoolean so two drains never run concurrently.
+     - drain(): fetch pendingEnrichment(). If empty, return WITHOUT loading any model — loading
+       costs seconds and must not happen for nothing.
+       Load the backend ONCE via BackendFactory.create(context), then loop over every pending
+       record reusing that one backend. This is the whole point of batching.
+       For each record:
+         markEnrichment(id, "RUNNING", attemptDelta=1, error=null)
+         structured = Extractor(backend).extract(ocrText = "", transcript = record.transcript)
+         re-embed from title+summary+transcript using the same embedFor logic CapturePipeline uses
+         applyEnrichment(...) with model = the backend's label
+         insert TaskEntity rows for structured.actions, exactly as CapturePipeline used to
+         (reuse the same parseDue logic — move it somewhere shared rather than duplicating it)
+       On a per-record Throwable: markEnrichment(id, "PENDING", 0, error=message) so it retries,
+       and after 3 attempts pendingEnrichment() stops returning it. Never let one bad record
+       stop the batch.
+     - Log to tag "SmritiEnrich": how many pending, which record, elapsed ms, final state.
+   - Also call Enricher.request(context) once from MainActivity.onCreate so records left PENDING
+     by a killed process are picked up on next launch.
+
+CONSTRAINTS
+- Do NOT use WorkManager (new dependency, manifest changes). An application-scoped coroutine
+  plus the on-launch sweep is sufficient — PENDING lives in the database and survives death.
+- Do NOT change Extractor, the Asr classes, ModelProvisioner, BackendPolicy, or any UI file.
+- Do NOT break SeedTrigger or EmbeddingBackfill.
+- Kotlin 2.0.21, coroutines, Room 2.6.1.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- Offline flavor must not gain a network permission.
+
+Print a summary of files changed and why.

@@ -548,3 +548,71 @@ use `adb logcat -v raw` when reading structured output.
 - No UI loader for `PENDING` records — "still enriching" and "produced nothing" look identical.
 - Everything after the phones were disconnected is unverified on hardware: the LiteRT-LM engine
   swap, the date resolver, the audio-window fix, and the entire screen-capture bubble.
+
+### 2026-09-05 — edit mode, voice-only capture, and the antimattr visual language
+
+Three pieces of work, all on `offline-pipeline-rework`, none of it verified on hardware —
+no device was available. Everything below is verified only by a clean build of both flavours,
+67 unit tests green, and `assertNoNetworkPermission` clean.
+
+**1. A memory can be corrected.** A pencil in the detail top bar turns the screen into itself,
+editable in place: title, summary, people, tags, amounts, tasks. Transcript and OCR stay
+read-only — they are what the microphone heard and the camera saw, evidence rather than a
+draft.
+
+Schema v3 adds `userEdited`. The guard matters more than the column: `applyEnrichment` carries
+`AND userEdited = 0`, so a correction typed while a record is still enriching cannot be
+replaced by the model. That guard alone created a defect — a user-edited row matched zero rows,
+never reached DONE, stayed RUNNING, was reset to PENDING on the next drain and re-run through
+the model up to three times, inserting duplicate tasks each time. Fixed by having
+`applyUserEdit` set `enrichmentState = 'DONE'`, and by adding the same guard to
+`pendingEnrichment` and `resetRunningToPending`.
+
+Consequence worth remembering: **saving an edit finalises the record.** If enrichment had not
+finished, it will not come back to add OCR or extract tasks from it.
+
+**2. The photograph is optional.** A 56dp mic beside the 84dp shutter, and a second smaller mic
+bubble below the capture bubble in the overlay. Both hold-to-talk, release to stop. A
+voice-only record is `photoPath = ""` — no column, no placeholder file. A blank transcript is
+never saved: no photo and no words is a row you can neither read nor delete.
+
+The two bubbles share one `Asr`, so one `@Volatile` flag stops both recording at once. A failed
+mic-bubble attach is logged, not fatal — the capture bubble is the primary feature.
+
+**3. The app is on paper.** antimattr.one's language ported deliberately, not approximated. The
+site's own `--token-*` values, read out of its live DOM: ground `#EEEEEE`, ink `#0D0D0D`, muted
+`#5E5E5E`, hairline `#BABABA4D`, and the token its CSS names Red-primary, `#E10909`.
+
+Three typefaces, one job each, bundled as static instances because the offline flavour has no
+INTERNET permission and downloadable fonts were never an option (644 KB, OFL, licences in
+`notes/licenses/`):
+  Instrument Serif  display only, with one word per headline in italic
+  Schibsted Grotesk anything read as prose or tapped as a control
+  Geist Mono        all metadata, lowercase, wrapped in red [brackets]
+
+Red takes the accent, so the semantic states moved off it: amber is work-in-progress, green is
+settled. All UI copy is lowercase. 6dp radii, hairlines instead of cards, no shadows anywhere.
+
+`ui/theme/Tokens.kt`, `ui/theme/Type.kt` and `ui/components/Primitives.kt` are the system; every
+screen was migrated onto them and **no `Color(0xFF...)` literal survives anywhere in the UI**.
+Design proof, rendered at 360x740 with the real faces:
+https://claude.ai/code/artifact/50515d9b-6799-476c-9d80-0203faf982d5
+
+**Worker fleet note.** All eight tasks went to `agy --model gemini-3.8-flash-high`, run strictly
+one at a time — two workers running `./gradlew` in the same tree fight over the Gradle lock and
+compile each other's half-written files. Specs in `notes/task-*.txt`, with the shared visual
+rules in `notes/redesign-preamble.txt`. One dispatch died on a network error and was re-run.
+
+The model was right and I was wrong once: my capture-screen spec told it to use both
+`Arrangement.spacedBy(S.lg)` and a `56.dp + S.lg` trailing spacer, which double-counts the gap
+and pushes the shutter 12dp left of centre. It implemented what I asked, flagged the error in
+its summary, and I fixed the value.
+
+**Unverified on hardware, in rough order of what would hurt most if wrong**
+- the Room 2->3 migration against a real populated database
+- edit mode's save path, and whether the enrichment guard behaves as intended in practice
+- both mic paths end-to-end: does `stopListening()` actually terminate `transcribe()` promptly
+- the mic bubble's second overlay window on OriginOS, which is aggressive about overlays
+- every screen's appearance: none of this has been seen on a physical display at any point
+- Devanagari in the new faces — none of the three carries it, so Hindi relies on Android's
+  per-glyph system fallback, which is expected to work but has not been seen

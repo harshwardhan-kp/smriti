@@ -1,0 +1,157 @@
+================================================================================
+SMRITI VISUAL LANGUAGE — HOUSE RULES
+Read this whole block before you change anything. It is not advisory.
+================================================================================
+
+The app is being moved onto the design language of antimattr.one. That language has already
+been ported into the codebase for you. Your job is to APPLY it, not to design anything. If a
+value you need is not in the files below, you are doing something the design does not call for
+— use the nearest thing that IS there.
+
+READ THESE THREE FILES FIRST, IN FULL:
+    app/src/main/java/com/smriti/app/ui/theme/Tokens.kt      — object S: every colour, every spacing step, every radius
+    app/src/main/java/com/smriti/app/ui/theme/Type.kt        — object SmritiType: every text style
+    app/src/main/java/com/smriti/app/ui/components/Primitives.kt — BracketLabel, NodeSquare, HairlineRule, DashedRule, SmritiButton, SmritiOutlineButton, SmritiChip, ChipKind, DisplayHeading, SectionLabel
+
+ABSOLUTE RULES
+
+1. NO LITERAL COLOURS. Not one `Color(0xFF...)` may survive in the file you are editing. Every
+   screen currently declares its own private `ColorAmber` / `ColorInk` / `ColorCream` /
+   `ColorCardBg` / `ColorChipBg` / `ColorRedAlert` at the top — DELETE those declarations and
+   replace every use with a member of `S`. The mapping is fixed:
+       ColorInk        (was the near-black page)  -> S.Paper        [the page is now near-white]
+       ColorCream      (was the light type)       -> S.Ink          [type is now near-black]
+       ColorCream@0.6  (was muted type)           -> S.Muted
+       ColorCream@0.45 (was faintest type)        -> S.MutedSoft
+       ColorCardBg / ColorChipBg (dark cards)     -> S.PaperSunk
+       ColorAmber      (was the accent)           -> S.Red          [the accent is now red]
+       ColorRedAlert   (was the live/overdue red) -> S.Red
+       a "still working" state                    -> S.Amber
+       a "done / settled" state                   -> S.Green
+       any border or divider                      -> S.Hairline
+
+2. NO LITERAL TEXT STYLES. No `fontSize =`, no `fontFamily =`, no `MaterialTheme.typography.*`,
+   no `fontWeight =` except where a SmritiType style already carries it. Every Text() gets
+   `style = SmritiType.<something>`. The mapping is fixed:
+       a screen's own title / a record's title  -> SmritiType.DisplaySmall  (Instrument Serif)
+       a card title                             -> SmritiType.Title
+       prose, summaries                         -> SmritiType.Body
+       a card's supporting line                 -> SmritiType.BodySmall
+       a control's sans label                   -> SmritiType.Label
+       timestamps, tags, counts, states         -> SmritiType.Meta / MetaMedium
+       any button label                         -> handled by SmritiButton, do not style it
+       transcripts and OCR output               -> SmritiType.Mono
+
+3. EVERY PIECE OF UI COPY IS LOWERCASE. Every string on antimattr.one is lowercase, including
+   its own name. "Timeline" becomes "timeline". "Open tasks" becomes "open tasks". "Could not
+   extract" becomes "could not extract". This applies to headings, labels, buttons, empty
+   states, placeholders and content descriptions' visible counterparts. It does NOT apply to
+   user data (a transcript, a person's name, a title the model wrote) — never lowercase what a
+   person said or wrote. It does not apply to contentDescription strings, which are for a
+   screen reader and should stay ordinary sentence case.
+
+4. NO LITERAL SPACING. Use S.xs (4), S.sm (6), S.md (10), S.gutter (16), S.lg (24), S.xl (32),
+   S.section (44). Horizontal page padding is S.gutter and nothing else.
+
+5. NO LITERAL RADII. Use S.r6 (the default — use this unless told otherwise), S.r8, S.r24,
+   S.pill. 12.dp and 16.dp corners are gone from this app.
+
+6. NO ELEVATION, NO SHADOWS. This language is drawn, not stacked. A card is separated by a
+   hairline border and a background one step back (S.PaperSunk), never by a shadow. If a
+   Material component insists on elevation, set it to 0.dp.
+
+7. Metadata wears brackets. Any small mono fact — a timestamp, a state, a count, a due date —
+   goes through `BracketLabel("...")`, which renders `[label]` with the brackets in red. Do not
+   hand-write square brackets into a string; call the component.
+
+WHAT NOT TO BREAK
+
+You are changing appearance ONLY. Do not change any of the following, in any file:
+  - navigation, callbacks, or the shape of any function's parameters
+  - ViewModels, DAOs, Flows, or anything that reads or writes the database
+  - which composable is rendered for which enrichmentState
+  - LazyColumn item keys (they are prefixed "task-" / "record-" to stop a key collision that
+    used to crash the timeline on scroll — leave them exactly as they are)
+  - the try/catch around BitmapFactory.decodeFile, or the branch that renders a mic glyph when
+    record.photoPath is blank (that is how a voice-only memory is drawn)
+  - any contentDescription that already exists
+
+TOOLCHAIN
+- Kotlin 2.0.21. Compose BOM 2024.09.03. minSdk 26, targetSdk 36.
+- material-icons-extended is available.
+- This app is offline-first; the `offline` flavour is the one that matters. `devcloud` is on
+  hold — add nothing to it, but it MUST still compile.
+- Must build BOTH flavours and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+================================================================================
+
+TASK: restyle the ask screen.
+ONE FILE CHANGES: app/src/main/java/com/smriti/app/ui/AskScreen.kt
+
+Read the file in full before you start. It is a search screen: a top bar, a query field with a
+mic IconButton in its trailing slot, an "Ask" Button, an answer area, and a list of matching
+record cards.
+
+CHANGES
+
+1. Delete the four private `Color(0xFF...)` vals at the top of the file. Every use becomes an
+   `S.` member per the mapping in the house rules.
+
+2. Scaffold containerColor -> S.Paper. TopAppBar
+   `TopAppBarDefaults.topAppBarColors(containerColor = S.Paper, titleContentColor = S.Ink,
+   navigationIconContentColor = S.Ink)`. Title becomes
+       DisplayHeading(text = "ask", italicWord = "ask", style = SmritiType.DisplaySmall, color = S.Ink)
+   Back IconButton unchanged, tinted S.Ink.
+
+3. THE QUERY FIELD. Keep OutlinedTextField and keep the trailing mic IconButton and its
+   `vm.listenVoice { query = it }` callback exactly as they are.
+       - shape = S.r6
+       - textStyle = SmritiType.Body
+       - placeholder Text: lowercase the string, style SmritiType.Body, colour S.MutedSoft
+       - colours: OutlinedTextFieldDefaults.colors(
+             focusedTextColor = S.Ink, unfocusedTextColor = S.Ink,
+             focusedBorderColor = S.Red, unfocusedBorderColor = S.Hairline,
+             cursorColor = S.Red,
+             focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent
+         )
+       - the mic IconButton's icon tint: S.Red while listening, S.Muted otherwise. If the file
+         has no listening state for it, use S.Muted and say so in your summary.
+
+4. THE ASK BUTTON. Delete the Material3 `Button` and its ButtonDefaults.buttonColors entirely.
+   Replace with
+       SmritiButton(label = "ask", onClick = <the existing onClick body>, primary = true,
+                    enabled = <whatever enabled expression it already has>,
+                    modifier = Modifier.fillMaxWidth())
+   Keep the onClick body byte-for-byte.
+
+5. THE ANSWER AREA. Whatever Card currently holds the answer becomes a plain Column: no Card,
+   no background fill, no elevation. Above it put `SectionLabel("answer")`, then `Spacer(S.sm)`,
+   then the answer text in SmritiType.Body, colour S.Ink. Put a `HairlineRule()` above the
+   SectionLabel with S.lg of space either side. Any "thinking"/loading text inside it becomes
+   `BracketLabelLive("thinking")` with the existing ThinkingDots() beside it if one is present.
+
+6. RESULT CARDS. Same treatment as the timeline's record cards: drop the Material Card, use a
+   clickable Column with `padding(vertical = S.gutter)` ended by a `HairlineRule()`. Inside:
+       BracketLabel(<the existing timestamp or score string>)   // on its own line, first
+       Spacer(S.sm)
+       Text(<title>, style = SmritiType.DisplaySmall, color = S.Ink, maxLines = 2, overflow = Ellipsis)
+       Spacer(S.xs)
+       Text(<summary or snippet>, style = SmritiType.BodySmall, color = S.Muted, maxLines = 2, overflow = Ellipsis)
+   If a result card currently shows tags, render them with `SmritiChip(tag, ChipKind.Tag)`.
+   Keep every onClick and every id passed to onOpenRecord exactly as it is.
+
+7. EMPTY / NO-RESULTS STATE. Left-aligned, high on the page, not centred:
+       DisplayHeading("nothing matches that", italicWord = "nothing")
+       Spacer(S.md)
+       Text("try fewer words, or a name.", style = SmritiType.Body, color = S.Muted)
+   Lowercase whatever the existing strings are and use this posture; keep whatever condition
+   already decides when to show it.
+
+8. Page padding: horizontal S.gutter everywhere. Vertical rhythm between blocks: S.lg.
+
+DO NOT change: AskViewModel, the recall/query logic, vm.listenVoice, onOpenRecord, onBack, or
+any condition that decides what is displayed.
+
+Print a summary of what changed.

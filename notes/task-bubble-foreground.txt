@@ -1,0 +1,57 @@
+Make the capture bubble survive. Edit files directly.
+
+THE DEFECT (observed on an iQOO 15, OriginOS, today)
+BubbleService starts, attaches its overlay, works — and then the bubble silently disappears a
+few minutes later. It is a PLAIN BACKGROUND SERVICE: it never calls startForeground(), and its
+manifest entry declares no foregroundServiceType. On Android 8+ the system reclaims background
+services quickly, and vivo's OriginOS is far more aggressive than stock. START_STICKY does not
+save it, because the system has no reason to consider the process worth keeping.
+
+ScreenCaptureService in the same package already does this correctly — read it first and follow
+its pattern exactly, including how it builds its notification channel.
+
+CHANGES
+
+1. app/src/main/AndroidManifest.xml
+   The BubbleService declaration currently has only android:exported="false". Add:
+       android:foregroundServiceType="specialUse"
+   and inside the <service> element add the required property child:
+       <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                 android:value="Persistent capture overlay the user explicitly enabled" />
+   "specialUse" is correct here: the service exists to keep a user-invoked overlay alive, which
+   is none of the other declared types. Do NOT reuse mediaProjection — that belongs to
+   ScreenCaptureService and claiming it here would be wrong.
+   Do NOT touch the two tools:node="remove" lines for INTERNET / ACCESS_NETWORK_STATE.
+
+2. app/src/main/java/com/smriti/app/capture/BubbleService.kt
+   - Call startForeground() in onCreate, BEFORE attaching the overlay, with a low-importance
+     notification on its own channel (id "smriti_bubble", name "Capture bubble",
+     IMPORTANCE_LOW so it does not make a sound or intrude).
+     The notification text should say what it is in plain words, e.g.
+       title "Smriti capture bubble", text "Long-press the bubble to capture and narrate".
+     Give it the app's launcher icon as the small icon, setOngoing(true), and a content intent
+     that opens MainActivity.
+   - Guard the API levels the way ScreenCaptureService does: the three-argument
+     startForeground(id, notification, type) with FOREGROUND_SERVICE_TYPE_SPECIAL_USE on
+     API 29+, and the two-argument form below that. minSdk is 26.
+   - Keep the existing @Volatile bubbleAttached idempotence fix. Do not regress it.
+   - Callers must use ContextCompat.startForegroundService(...) rather than startService(...);
+     update BubbleService.start() and every call site (MainActivity's handleStartBubble).
+   - stopForeground + stopSelf on ACTION_STOP as it does today, and cancel the notification.
+
+3. Also make it come back after a reboot or a process kill:
+   Return START_STICKY from onStartCommand (verify it already does), and on restart — when
+   onStartCommand receives a null intent, which is what Android delivers on a sticky restart —
+   re-attach the overlay rather than doing nothing.
+
+CONSTRAINTS
+- Do NOT change ScreenCaptureService, BubbleCapturePipeline, the gesture handling, the overlay
+  layout, or the drag/long-press logic. Only the service lifecycle.
+- Do NOT add an AccessibilityService or any new permission beyond what the manifest already has
+  (FOREGROUND_SERVICE and POST_NOTIFICATIONS are already declared).
+- Kotlin 2.0.21. minSdk 26, targetSdk 36.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+Print a summary of what changed.

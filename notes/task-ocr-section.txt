@@ -1,0 +1,66 @@
+Re-introduce OCR as an ISOLATED background data channel. Edit/create files directly.
+
+DESIGN INTENT — read carefully, this is the whole point
+OCR was removed from the capture path earlier today because it blocked the user and its output
+was fused into the language-model prompt. It comes back now under two hard rules:
+
+  RULE 1: OCR NEVER runs on the capture path. The user must still see photo + transcript in
+          ~1.4 s. OCR happens only inside the background enrichment pass.
+  RULE 2: OCR text is its OWN section. It is stored in its own column and is NOT passed to
+          Extractor, NOT concatenated into any prompt, and NOT used to build the title or
+          summary. It exists as independent data for future features (search over photographed
+          text, evidence display, cross-checking a vision model later).
+
+If you fuse OCR back into the extraction prompt you have defeated the purpose of this task.
+
+CHANGES
+
+1. app/build.gradle.kts
+   Re-add exactly these two dependencies next to the other Google libraries:
+       implementation("com.google.mlkit:text-recognition:16.0.1")
+       implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+   Change nothing else. Do NOT touch app/src/main/AndroidManifest.xml — the two existing
+   tools:node="remove" lines already strip the INTERNET permission ML Kit's transitive
+   datatransport dependency declares, and :app:assertNoNetworkPermission proves it.
+
+2. CREATE app/src/main/java/com/smriti/app/ai/Ocr.kt
+   Restore the object that was deleted in commit 847a626. Recover it with:
+       git show 847a626^:app/src/main/java/com/smriti/app/ai/Ocr.kt
+   Keep its behaviour and KDoc EXACTLY as they were: it runs both the Devanagari and the Latin
+   recognizer and keeps whichever returned more characters, because Indian workplace paper is
+   routinely bilingual and the Latin model returns near-empty text on Devanagari.
+   Signature stays: suspend fun read(file: java.io.File, context: Context): String
+
+3. app/src/main/java/com/smriti/app/ai/Enricher.kt
+   Inside drain(), for each pending record, ALSO run OCR over the record's photo and store the
+   result — independently of the language model:
+       val ocr = try { Ocr.read(java.io.File(record.photoPath), appContext) } catch (t: Throwable) { "" }
+   Rules:
+     - Run it even if the language-model backend failed to load. OCR does not depend on the LLM,
+       and a record with OCR text but no extraction is still more useful than neither. If the
+       backend is unavailable, still do the OCR pass and still persist it.
+     - Do NOT pass `ocr` into Extractor.extract(). Keep calling it with ocrText = "" exactly as
+       now. The transcript stays the only extraction input.
+     - Do NOT include OCR text in the re-embedding input either — keep embedding on
+       title + summary + transcript as it is today. (A future feature can decide to index it.)
+     - Log the OCR character count to the SmritiEnrich tag, e.g. "record 21 ocr: 143 chars".
+
+4. app/src/main/java/com/smriti/app/data/RecordDao.kt
+   The existing applyEnrichment(...) query must also write the OCR text. Add an `ocr: String`
+   parameter and `ocrText = :ocr` to the SET clause. Update the call site in Enricher.
+   Do NOT add a new column — RecordEntity.ocrText already exists and is currently written
+   empty; that is exactly the field this belongs in. No Room migration is needed and the
+   database version must stay at 2.
+
+CONSTRAINTS
+- Do NOT change CapturePipeline. Capture must remain LLM-free and OCR-free.
+- Do NOT change Extractor, buildPrompt, the Asr classes, or any UI file.
+- Do NOT bump the Room database version or add a migration.
+- Kotlin 2.0.21, coroutines.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- The offline flavor MUST still pass :app:assertNoNetworkPermission. If it fails, ML Kit has
+  reintroduced a network permission the manifest does not strip — report that rather than
+  editing the manifest to hide it.
+
+Print a summary of files changed and why.

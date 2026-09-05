@@ -1,0 +1,52 @@
+Two small correctness fixes. Edit files directly. They are independent.
+
+FIX 1 - the offline badge lies on the devcloud build
+app/src/main/java/com/smriti/app/ui/CaptureScreen.kt around line 118 hardcodes:
+    text = "OFFLINE · ON-DEVICE"
+That file is in `main`, shared by BOTH flavors. So the devcloud build - which HAS the INTERNET
+permission and sends every capture to api.meta.ai - displays "OFFLINE · ON-DEVICE" to the user.
+For an app whose entire claim is that nothing leaves the device, a build that asserts that
+falsely on screen is worse than one that says nothing.
+
+The codebase already has the seam for this: per-flavor objects with identical signatures in
+app/src/offline/... and app/src/devcloud/..., as used by BackendFactory, AsrFactory and
+NpuProbe. Follow that exact pattern:
+    CREATE app/src/offline/java/com/smriti/app/ui/BuildBadge.kt
+    CREATE app/src/devcloud/java/com/smriti/app/ui/BuildBadge.kt
+        object BuildBadge { val label: String }
+    offline  -> "OFFLINE · ON-DEVICE"
+    devcloud -> "DEV · CLOUD MODELS"
+Then use BuildBadge.label in CaptureScreen instead of the literal. Change NOTHING else about
+that composable - not the Surface, the colours, the shape, the padding or the typography.
+
+FIX 2 - "[INAUDIBLE]" leaks into record titles
+Whisper emits the literal marker "[INAUDIBLE]" (and sometimes "[BLANK_AUDIO]", "(inaudible)",
+"[ Silence ]") when it is given silence. Holding the shutter without speaking therefore
+produces a record whose title is "[INAUDIBLE]" instead of falling through to the existing
+"Untitled capture · HH:MM" path. Observed on device today.
+
+Fix it at the source so every consumer benefits:
+  app/src/offline/java/com/smriti/app/capture/SherpaWhisperAsr.kt - after obtaining the
+  recognizer's text and trimming it, treat a transcript that consists ONLY of such a marker as
+  empty and return "". Match case-insensitively, allow surrounding whitespace, and cover both
+  square-bracket and parenthesis forms. Put the marker list in a private val with a comment
+  naming where they come from (Whisper's own special tokens).
+  Do the same in app/src/offline/java/com/smriti/app/capture/VoskAsr.kt ONLY if Vosk can emit
+  similar markers - if it cannot, leave it alone and say so in your summary.
+
+Add unit tests for the marker stripping to the existing
+app/src/test/java/com/smriti/app/capture/SherpaWhisperAsrTest.kt - the helper must be internal
+or otherwise testable without loading a 357 MB model. Cover: "[INAUDIBLE]", "  [inaudible]  ",
+"(inaudible)", "[BLANK_AUDIO]", and a real transcript that merely CONTAINS the word inaudible
+in a sentence, which must NOT be stripped.
+
+CONSTRAINTS
+- Do NOT change CapturePipeline, BubbleCapturePipeline, Enricher, Extractor, the Room schema,
+  ScreenCaptureService or BubbleService.
+- Do NOT change any other UI file or any other string in CaptureScreen.
+- Kotlin 2.0.21.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+Print a summary of files changed and why.

@@ -1,0 +1,114 @@
+Add voice-only capture to the in-app camera screen. Edit files directly.
+
+WHY
+Every capture this app can make right now is forced to contain a photograph. Tap the shutter and
+you get a photo; hold it and you get a photo plus your voice. There is no way to say "remember
+that Sharma Traders wants two hundred more units" without also pointing the camera at something
+and storing a meaningless picture. Most of what a person wants to remember at work has nothing
+in front of the lens. The photo should be optional; the voice is the point.
+
+The floating bubble gets its own voice-only affordance in a separate task. Do NOT touch
+BubbleService, BubbleCapturePipeline or ScreenCaptureService here — but the storage convention
+you establish below is the one that task will follow, so get it right.
+
+STORAGE CONVENTION (this is load-bearing; the bubble task depends on it)
+A voice-only record is a RecordEntity with `photoPath = ""`. Not null, not a placeholder path —
+the empty string. There is no new column and no new table. Everything downstream already
+tolerates it: BitmapFactory.decodeFile("") returns null inside the existing try/catch in
+TimelineScreen and DetailScreen, and Enricher.drain already wraps Ocr.read in a try/catch that
+yields "" for a missing file. Verify both of those claims by reading the code before you rely on
+them, and say in your summary whether they held.
+
+CHANGES
+
+1. app/src/main/java/com/smriti/app/capture/CapturePipeline.kt
+   Add a second entry point next to the existing run(withVoice: Boolean):
+
+       fun runVoiceOnly(): Flow<CaptureStage>
+
+   It emits CaptureStage.Listening, transcribes with `asr.transcribe()`, and then:
+     - If the transcript is blank after trimming, emit CaptureStage.Failed("Nothing heard") and
+       save NOTHING. A record with no photo and no words is an empty row the user can neither
+       read nor delete. This case is real: the ASR returns "" for silence, and holding the mic
+       by accident in a pocket is the obvious way to reach it.
+     - Otherwise build a RecordEntity exactly as run() does, with photoPath = "", ocrText = "",
+       enrichmentState = "PENDING", the same titleFor(...) and embedFor(...) calls, insert it,
+       emit CaptureStage.Done(recordId), and call Enricher.request(context).
+   Do NOT touch the camera in this path at all — do not call camera.capture(), and do not
+   require the camera to be bound. The whole point is that the lens is not involved.
+   Factor the shared record-building so run() and runVoiceOnly() do not drift apart, but keep
+   the change small; a private suspend fun saveRecord(photoPath: String, transcript: String): Long
+   is enough. Do not restructure run()'s concurrency — the async photo/ASR pairing in run() is
+   there because of a fixed audio-clipping bug and must stay exactly as it is.
+
+2. app/src/main/java/com/smriti/app/ui/CaptureViewModel.kt
+   Add `fun captureVoiceOnly()`, mirroring capture(): cancel captureJob, launch, collect
+   pipeline.runVoiceOnly(), set _stage, set _lastRecordId on Done. stopVoice() already exists and
+   already works for this path — it calls stopListening() on the shared Asr — so do not add a
+   second stop method.
+
+3. app/src/main/java/com/smriti/app/ui/CaptureScreen.kt
+   Add a mic button to the left of the amber shutter, in the same bottom Column, laid out as a
+   Row: [mic] [shutter] with the shutter still horizontally centred on the screen. To keep the
+   shutter centred, put a Spacer of the same width as the mic button on the shutter's right.
+
+   Mic button design — it must read as secondary to the shutter, not as a rival:
+     - 56.dp circle (the shutter is 84.dp), transparent fill, 2.dp ColorCream border at 0.7 alpha
+     - Icons.Default.Mic (material-icons-extended is already a dependency), tinted ColorCream
+     - contentDescription "Record voice only"
+     - HOLD to talk, release to stop — the same gesture grammar as the shutter's hold. Use
+       pointerInput + detectTapGestures with onPress { tryAwaitRelease() } / onLongPress, mirroring
+       the shutter's existing handler, with its own `isMicHeld` state.
+       onLongPress -> isMicHeld = true; vm.captureVoiceOnly()
+       on release   -> if (isMicHeld) vm.stopVoice(); isMicHeld = false
+       A short tap on the mic must do NOTHING except show the hint below — do not start a
+       recording the user cannot end. The shutter's onTap already means "photo, no voice"; the
+       mic has no tap meaning.
+     - While held: swap the border to 4.dp ColorRedAlert and fill with ColorRedAlert at 0.15
+       alpha, matching how the shutter signals a live recording.
+
+   Hint text, which currently reads "Tap for a photo · Hold to add your voice":
+     - mic held        -> "LISTENING — voice only, release to stop"   (ColorRedAlert, bold)
+     - shutter held    -> "LISTENING — release to stop"               (unchanged)
+     - idle            -> "Tap for a photo · Hold to add your voice · Hold the mic for voice only"
+   Keep the existing colours, weights and background pill exactly as they are.
+
+   `isListening` currently drives the shutter's red ring. It must NOT light up the shutter when
+   the mic is what is held. Keep the two states separate.
+
+4. app/src/main/java/com/smriti/app/ui/TimelineScreen.kt
+   RecordCard renders a plain 56.dp grey Box when the thumbnail fails to decode. A voice-only
+   memory will now hit that path on every card, and an empty grey square reads as a broken
+   image rather than as a deliberate voice note. When `record.photoPath.isBlank()`, render the
+   same 56.dp rounded Box but filled with ColorAmber at 0.15 alpha and containing a centred
+   Icons.Default.Mic tinted ColorAmber, contentDescription "Voice note". Keep the existing grey
+   Box for the other case — a photo that genuinely failed to decode is a different thing and
+   should keep looking like one.
+   Change nothing else in TimelineScreen.
+
+5. Tests — app/src/test/java/com/smriti/app/capture/
+   The existing tests in this directory are plain JVM tests with no Android framework and no
+   Robolectric; keep it that way. CapturePipeline needs a Context and a Room DAO, so do not try
+   to instantiate it. Instead test the one rule that carries the risk of regressing silently:
+   blank transcripts must not be saved. Extract that predicate as an internal, testable function
+   on CapturePipeline's companion, e.g.
+       internal fun isWorthSaving(transcript: String): Boolean
+   and cover: "" , "   ", "\n\t ", a real sentence, and a sentence with leading/trailing spaces.
+   Put them in a new VoiceOnlyCaptureTest.kt.
+
+CONSTRAINTS
+- Do NOT touch BubbleService, BubbleCapturePipeline, ScreenCaptureService or MainActivity.
+- Do NOT touch DetailScreen.kt or DetailViewModel — another task is rewriting that file right now.
+- Do NOT add a database column, a migration, or a field to RecordEntity. photoPath = "" is the
+  whole convention.
+- Do NOT add any permission. RECORD_AUDIO is already declared and already granted by
+  PermissionGate.
+- Do NOT change the Asr interface, AsrFactory, SherpaWhisperAsr or the audio window logic.
+- Kotlin 2.0.21. minSdk 26, targetSdk 36. Compose BOM 2024.09.03.
+- This app is offline-first; the `offline` flavor is the one that matters. The `devcloud` flavor
+  is on hold — do not add features to it, but it MUST still compile.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+Print a summary of files changed and why.

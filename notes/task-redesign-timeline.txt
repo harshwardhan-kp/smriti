@@ -1,0 +1,194 @@
+================================================================================
+SMRITI VISUAL LANGUAGE — HOUSE RULES
+Read this whole block before you change anything. It is not advisory.
+================================================================================
+
+The app is being moved onto the design language of antimattr.one. That language has already
+been ported into the codebase for you. Your job is to APPLY it, not to design anything. If a
+value you need is not in the files below, you are doing something the design does not call for
+— use the nearest thing that IS there.
+
+READ THESE THREE FILES FIRST, IN FULL:
+    app/src/main/java/com/smriti/app/ui/theme/Tokens.kt      — object S: every colour, every spacing step, every radius
+    app/src/main/java/com/smriti/app/ui/theme/Type.kt        — object SmritiType: every text style
+    app/src/main/java/com/smriti/app/ui/components/Primitives.kt — BracketLabel, NodeSquare, HairlineRule, DashedRule, SmritiButton, SmritiOutlineButton, SmritiChip, ChipKind, DisplayHeading, SectionLabel
+
+ABSOLUTE RULES
+
+1. NO LITERAL COLOURS. Not one `Color(0xFF...)` may survive in the file you are editing. Every
+   screen currently declares its own private `ColorAmber` / `ColorInk` / `ColorCream` /
+   `ColorCardBg` / `ColorChipBg` / `ColorRedAlert` at the top — DELETE those declarations and
+   replace every use with a member of `S`. The mapping is fixed:
+       ColorInk        (was the near-black page)  -> S.Paper        [the page is now near-white]
+       ColorCream      (was the light type)       -> S.Ink          [type is now near-black]
+       ColorCream@0.6  (was muted type)           -> S.Muted
+       ColorCream@0.45 (was faintest type)        -> S.MutedSoft
+       ColorCardBg / ColorChipBg (dark cards)     -> S.PaperSunk
+       ColorAmber      (was the accent)           -> S.Red          [the accent is now red]
+       ColorRedAlert   (was the live/overdue red) -> S.Red
+       a "still working" state                    -> S.Amber
+       a "done / settled" state                   -> S.Green
+       any border or divider                      -> S.Hairline
+
+2. NO LITERAL TEXT STYLES. No `fontSize =`, no `fontFamily =`, no `MaterialTheme.typography.*`,
+   no `fontWeight =` except where a SmritiType style already carries it. Every Text() gets
+   `style = SmritiType.<something>`. The mapping is fixed:
+       a screen's own title / a record's title  -> SmritiType.DisplaySmall  (Instrument Serif)
+       a card title                             -> SmritiType.Title
+       prose, summaries                         -> SmritiType.Body
+       a card's supporting line                 -> SmritiType.BodySmall
+       a control's sans label                   -> SmritiType.Label
+       timestamps, tags, counts, states         -> SmritiType.Meta / MetaMedium
+       any button label                         -> handled by SmritiButton, do not style it
+       transcripts and OCR output               -> SmritiType.Mono
+
+3. EVERY PIECE OF UI COPY IS LOWERCASE. Every string on antimattr.one is lowercase, including
+   its own name. "Timeline" becomes "timeline". "Open tasks" becomes "open tasks". "Could not
+   extract" becomes "could not extract". This applies to headings, labels, buttons, empty
+   states, placeholders and content descriptions' visible counterparts. It does NOT apply to
+   user data (a transcript, a person's name, a title the model wrote) — never lowercase what a
+   person said or wrote. It does not apply to contentDescription strings, which are for a
+   screen reader and should stay ordinary sentence case.
+
+4. NO LITERAL SPACING. Use S.xs (4), S.sm (6), S.md (10), S.gutter (16), S.lg (24), S.xl (32),
+   S.section (44). Horizontal page padding is S.gutter and nothing else.
+
+5. NO LITERAL RADII. Use S.r6 (the default — use this unless told otherwise), S.r8, S.r24,
+   S.pill. 12.dp and 16.dp corners are gone from this app.
+
+6. NO ELEVATION, NO SHADOWS. This language is drawn, not stacked. A card is separated by a
+   hairline border and a background one step back (S.PaperSunk), never by a shadow. If a
+   Material component insists on elevation, set it to 0.dp.
+
+7. Metadata wears brackets. Any small mono fact — a timestamp, a state, a count, a due date —
+   goes through `BracketLabel("...")`, which renders `[label]` with the brackets in red. Do not
+   hand-write square brackets into a string; call the component.
+
+WHAT NOT TO BREAK
+
+You are changing appearance ONLY. Do not change any of the following, in any file:
+  - navigation, callbacks, or the shape of any function's parameters
+  - ViewModels, DAOs, Flows, or anything that reads or writes the database
+  - which composable is rendered for which enrichmentState
+  - LazyColumn item keys (they are prefixed "task-" / "record-" to stop a key collision that
+    used to crash the timeline on scroll — leave them exactly as they are)
+  - the try/catch around BitmapFactory.decodeFile, or the branch that renders a mic glyph when
+    record.photoPath is blank (that is how a voice-only memory is drawn)
+  - any contentDescription that already exists
+
+TOOLCHAIN
+- Kotlin 2.0.21. Compose BOM 2024.09.03. minSdk 26, targetSdk 36.
+- material-icons-extended is available.
+- This app is offline-first; the `offline` flavour is the one that matters. `devcloud` is on
+  hold — add nothing to it, but it MUST still compile.
+- Must build BOTH flavours and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+================================================================================
+
+TASK: restyle the timeline screen.
+ONE FILE CHANGES: app/src/main/java/com/smriti/app/ui/TimelineScreen.kt
+
+WHY THIS SCREEN FIRST
+It is the screen a person actually lives in. Right now it is a dark list of grey rounded
+rectangles that all weigh the same: a 12dp card, a 56dp thumbnail, a bold title, a grey
+timestamp, amber pills. Nothing leads the eye and every record looks equally important. On
+paper, with a serif title and mono metadata, the title becomes the thing you read and
+everything else recedes — which is what a memory list is for.
+
+THE SCREEN, TOP TO BOTTOM
+
+1. Scaffold containerColor -> S.Paper. TopAppBar containerColor -> S.Paper.
+   TopAppBarDefaults.topAppBarColors(containerColor = S.Paper, titleContentColor = S.Ink,
+   navigationIconContentColor = S.Ink). No elevation, no scroll behaviour, no divider under it.
+
+2. The top bar title. Replace the bold "Timeline" Text with:
+       DisplayHeading(text = "timeline", italicWord = "time")
+   using `style = SmritiType.DisplaySmall`, `color = S.Ink`. The italic on "time" is the
+   antimattr move — one word in the heading leans, and it is always the word that carries the
+   meaning. Keep the existing back IconButton exactly as it is, tinted S.Ink.
+
+3. Immediately under the TopAppBar, before the LazyColumn, add a single row of counts in mono:
+       Row(horizontalArrangement = Arrangement.spacedBy(S.md)) {
+           BracketLabel("${records.size} memories")
+           BracketLabel("${openTasks.size} open")
+       }
+   padded `horizontal = S.gutter, bottom = S.gutter`. Pluralise naively — "1 memories" is
+   acceptable and is not worth a branch. This row is the screen's only chrome and it gives the
+   red accent somewhere to appear on an otherwise quiet page.
+
+4. EMPTY STATE. Currently one centred grey sentence. Replace with a left-aligned block, padded
+   S.gutter horizontally and S.xl from the top, NOT vertically centred:
+       DisplayHeading("nothing captured yet", italicWord = "nothing")   // SmritiType.Display, S.Ink
+       Spacer(S.md)
+       Text("point the camera at something and talk, or hold the mic and just talk.",
+            style = SmritiType.Body, color = S.Muted)
+   Left-aligned and high on the page is the antimattr posture; a centred sentence in the middle
+   of a void is the generic-app posture.
+
+5. SECTION HEADERS. Both sticky headers ("Open tasks", "Timeline") become:
+       Surface(color = S.Paper, modifier = Modifier.fillMaxWidth()) {
+           Column {
+               SectionLabel("open tasks")     // or "memories" for the second one
+               Spacer(S.sm)
+               HairlineRule()
+           }
+       }
+   with `Modifier.padding(top = S.lg, bottom = S.md)` on the Column. Rename the second header
+   from "Timeline" to "memories" — the screen is already called timeline, so repeating it inside
+   is noise. Keep them as stickyHeader, keep the Surface backed by S.Paper so rows scroll
+   underneath cleanly.
+
+6. TASK ROWS (TaskRow). Today: a S.PaperSunk rounded box per task. Make it flatter and lighter —
+   a task is a line, not a card.
+       - Remove the background entirely. The row is `Modifier.fillMaxWidth().padding(vertical = S.sm)`.
+       - Under each row put a HairlineRule(). That is the separation.
+       - Checkbox colours: CheckboxDefaults.colors(checkedColor = S.Red, checkmarkColor = S.White,
+         uncheckedColor = S.Hairline).
+       - Task text: SmritiType.Body, colour S.Ink when open, S.MutedSoft when done. When done,
+         also set `textDecoration = TextDecoration.LineThrough` — the checkbox alone is too quiet
+         on a light ground.
+       - Due date: replace the Surface pill with `BracketLabel(formatDueDate(dueMillis))` when
+         the date is in the future, and `BracketLabelLive(formatDueDate(dueMillis))` when it is
+         overdue. Overdue is the one thing on this screen allowed to be fully red.
+
+7. RECORD CARDS (RecordCard). This is the important one.
+       - Drop the Material `Card` entirely. Use a Column with
+         `Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = S.gutter)`
+         and a HairlineRule() as the LAST child. Records are separated by a rule, not boxed.
+         (Keep the click target on the whole row.)
+       - Inside, a Row with `horizontalArrangement = Arrangement.spacedBy(S.gutter)` and
+         `verticalAlignment = Alignment.Top`.
+       - The 56.dp leading square keeps all three of its existing branches, restyled:
+           photo decoded      -> Image, clip(S.r6)                       [was RoundedCornerShape(8.dp)]
+           photoPath blank    -> Box(S.RedTint.copy(alpha = 0.10f), S.r6) with a centred
+                                 Icons.Default.Mic tinted S.Red, contentDescription "Voice note"
+           decode failed      -> Box(S.PaperSunk, S.r6), and add a 1.dp S.Hairline border so an
+                                 empty square still reads as deliberate on a light ground
+         Do not touch the decode logic or the inSampleSize.
+       - Title: `SmritiType.DisplaySmall`, S.Ink, maxLines 2 (was 1 — a serif title at 26sp
+         wants the second line), overflow Ellipsis. Fallback text becomes "untitled".
+       - Timestamp: `BracketLabel(formatRelativeTime(record.createdAt))`. Move it OUT of the
+         title Row and put it on its own line ABOVE the title, with S.sm below it. A mono
+         timestamp sitting above a serif title is the antimattr card; a timestamp fighting the
+         title for the same line is the old one.
+       - enrichmentState branches keep their exact structure:
+           "PENDING"/"RUNNING" -> ThinkingDots() + BracketLabel(if RUNNING "understanding" else
+             "queued") on one Row spaced S.sm, then the two existing ShimmerLine calls unchanged.
+           "FAILED"            -> BracketLabel("could not extract")
+           else                -> summary in SmritiType.BodySmall, S.Muted, maxLines 2, Ellipsis
+       - Tags FlowRow: replace each amber Surface pill with
+             SmritiChip(text = tag, kind = ChipKind.Tag)
+         spacing S.sm both directions.
+
+8. LazyColumn padding: `horizontal = S.gutter`. Add `contentPadding = PaddingValues(bottom = S.section)`
+   so the last record is not glued to the navigation bar.
+
+DELETE at the top of the file: the five private `Color(0xFF...)` vals. Nothing may reference
+them afterwards.
+
+DO NOT change: formatRelativeTime, formatDueDate, parseTags, TimelineViewModel, the item keys,
+the stickyHeader/ExperimentalFoundationApi opt-ins, or vm.toggleTask.
+
+Print a summary of what changed.

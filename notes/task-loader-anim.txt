@@ -1,0 +1,56 @@
+Replace the stock spinner with a purpose-built loading animation. Edit files directly. UI ONLY.
+
+CONTEXT
+A previous change added a Material3 CircularProgressIndicator to timeline and detail cards while
+a record is being enriched (enrichmentState PENDING or RUNNING). It works, but a stock spinner
+says "generic Android app". This app has a strong visual identity -- amber on near-black, heavy
+display type -- and the loading state should look like it belongs to it.
+
+There must be NO emoji anywhere in the UI. Everything is drawn with Compose.
+
+BUILD TWO COMPOSABLES in a NEW file
+app/src/main/java/com/smriti/app/ui/EnrichingIndicator.kt
+
+1. ThinkingDots(modifier: Modifier = Modifier)
+   Three small circles drawn on a Compose Canvas, in the existing amber theme colour.
+   Animate with rememberInfiniteTransition: each dot's alpha and radius eases up and back down,
+   staggered so the pulse travels left to right, roughly 1200 ms for the full cycle with about
+   160 ms offset per dot. Use FastOutSlowInEasing or a tween with easing -- not a linear ramp,
+   which reads as mechanical.
+   Total footprint about 26.dp wide, 8.dp tall. It must sit inline on a text line without
+   changing the card's height.
+
+2. ShimmerLine(modifier: Modifier = Modifier, widthFraction: Float = 1f)
+   A skeleton placeholder for the summary text that has not arrived yet: a rounded rect,
+   about 11.dp tall, filled with a horizontal Brush.linearGradient that sweeps across it
+   continuously (translate the gradient's start/end X with an infinite transition, roughly
+   1400 ms per sweep). Base colour is the existing muted//surface colour and the moving band is
+   a lighter tint of it -- subtle, not a flashy highlight.
+
+WIRE THEM IN, replacing the CircularProgressIndicator that is currently there
+- TimelineScreen record card: while RUNNING or PENDING, the summary area shows
+  ThinkingDots followed by the label ("Understanding…" / "Queued") on one line, and
+  BELOW it one ShimmerLine at widthFraction 0.85f and a second at 0.55f, to suggest the two
+  lines of summary that are coming. Keep the card height stable so the list does not jump when
+  a record finishes.
+- DetailScreen: same pair in the summary position.
+- DONE renders exactly as it does today. FAILED keeps its quiet "Could not extract" line with
+  NO animation.
+
+RULES
+- Reuse the theme colours already defined in ui/theme (ColorAmber and the muted/surface colours).
+  Do not introduce a new hardcoded hex value anywhere.
+- Respect reduced motion: if the animations are trivially disableable, guard them; if not, do
+  not invent an API for it -- just say so in your summary.
+- Remove the now-unused CircularProgressIndicator import if nothing else uses it.
+- No new dependencies. No emoji, no unicode glyph loaders, no text-based spinners.
+
+CONSTRAINTS
+- UI only. Do NOT touch Enricher, Extractor, CapturePipeline, BubbleService, the Room schema,
+  the DAO, or any ViewModel logic beyond what the previous change already added.
+- Kotlin 2.0.21, Jetpack Compose, Material3.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- Offline flavor must not gain a network permission.
+
+Print a summary of what changed.
