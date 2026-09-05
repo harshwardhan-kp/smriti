@@ -355,15 +355,45 @@ private fun RecordCard(
                     )
                 }
 
-                if (record.summary.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = record.summary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ColorCream.copy(alpha = 0.75f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                when (record.enrichmentState) {
+                    "PENDING", "RUNNING" -> {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            ThinkingDots()
+                            Text(
+                                text = if (record.enrichmentState == "RUNNING") "Understanding…" else "Queued",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ColorCream.copy(alpha = 0.55f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        ShimmerLine(widthFraction = 0.85f)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        ShimmerLine(widthFraction = 0.55f)
+                    }
+                    "FAILED" -> {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Could not extract",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ColorCream.copy(alpha = 0.55f)
+                        )
+                    }
+                    else -> {
+                        if (record.summary.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = record.summary,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ColorCream.copy(alpha = 0.75f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
 
                 if (tags.isNotEmpty()) {

@@ -14,6 +14,8 @@ val AmberDark = Color(0xFFC49300)
 val DarkSurface = Color(0xFF1E1E1E)
 val LightSurface = Color(0xFFFFFFFF)
 
+val ColorAmber = Amber
+
 private val DarkColorScheme = darkColorScheme(
     primary = Amber,
     onPrimary = Ink,

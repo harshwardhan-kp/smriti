@@ -68,6 +68,7 @@ import com.smriti.app.data.RecordDao
 import com.smriti.app.data.RecordEntity
 import com.smriti.app.data.SmritiDb
 import com.smriti.app.data.TaskEntity
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -88,11 +89,19 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
     private val _tasks = MutableStateFlow<List<TaskEntity>>(emptyList())
     val tasks: StateFlow<List<TaskEntity>> = _tasks.asStateFlow()
 
+    private var recordJob: Job? = null
+    private var tasksJob: Job? = null
+
     fun load(recordId: Long) {
-        viewModelScope.launch {
-            _record.value = dao.getRecord(recordId)
+        _record.value = null
+        recordJob?.cancel()
+        recordJob = viewModelScope.launch {
+            dao.observeRecord(recordId).collect {
+                _record.value = it
+            }
         }
-        viewModelScope.launch {
+        tasksJob?.cancel()
+        tasksJob = viewModelScope.launch {
             dao.observeTasksForRecord(recordId).collect {
                 _tasks.value = it
             }
@@ -205,14 +214,44 @@ fun DetailScreen(
                     color = ColorCream
                 )
 
-                if (currentRecord.summary.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = currentRecord.summary,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = ColorCream.copy(alpha = 0.9f),
-                        lineHeight = 22.sp
-                    )
+                when (currentRecord.enrichmentState) {
+                    "PENDING", "RUNNING" -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ThinkingDots()
+                            Text(
+                                text = if (currentRecord.enrichmentState == "RUNNING") "Understanding…" else "Queued",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = ColorCream.copy(alpha = 0.6f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        ShimmerLine(widthFraction = 0.85f)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        ShimmerLine(widthFraction = 0.55f)
+                    }
+                    "FAILED" -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Could not extract",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ColorCream.copy(alpha = 0.6f)
+                        )
+                    }
+                    else -> {
+                        if (currentRecord.summary.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = currentRecord.summary,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = ColorCream.copy(alpha = 0.9f),
+                                lineHeight = 22.sp
+                            )
+                        }
+                    }
                 }
 
                 if (people.isNotEmpty() || tags.isNotEmpty()) {

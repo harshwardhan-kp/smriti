@@ -20,6 +20,9 @@ interface RecordDao {
     @Query("SELECT * FROM records WHERE id = :id")
     suspend fun getRecord(id: Long): RecordEntity?
 
+    @Query("SELECT * FROM records WHERE id = :id")
+    fun observeRecord(id: Long): Flow<RecordEntity?>
+
     @Query("SELECT * FROM tasks ORDER BY dueDateMillis IS NULL ASC, dueDateMillis ASC")
     fun observeTasks(): Flow<List<TaskEntity>>
 
