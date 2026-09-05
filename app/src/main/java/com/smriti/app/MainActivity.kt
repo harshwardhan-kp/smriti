@@ -49,6 +49,7 @@ import com.smriti.app.ai.Enricher
 import android.content.Intent
 import com.smriti.app.ai.NpuProbe
 import com.smriti.app.capture.AsrSelfTest
+import com.smriti.app.capture.BubbleLauncher
 import com.smriti.app.capture.BubbleService
 import com.smriti.app.capture.ScreenCaptureConsentActivity
 import com.smriti.app.capture.ScreenCaptureService
@@ -137,20 +138,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleStartBubble() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            val overlayIntent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            startActivity(overlayIntent)
-            return
-        }
-
-        if (!ScreenCaptureService.isArmed()) {
-            startActivity(Intent(this, ScreenCaptureConsentActivity::class.java))
-        }
-
-        BubbleService.start(this)
+        BubbleLauncher.start(this)
     }
 }
 

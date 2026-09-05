@@ -5,6 +5,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,15 +37,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.smriti.app.capture.BubbleLauncher
 import com.smriti.app.capture.CaptureStage
 import com.smriti.app.ui.components.BracketLabel
 import com.smriti.app.ui.components.BracketLabelLive
@@ -73,10 +79,24 @@ fun CaptureScreen(
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
     val stage by vm.stage.collectAsState()
     var isShutterHeld by remember { mutableStateOf(false) }
     var isMicHeld by remember { mutableStateOf(false) }
     var isVoiceOnlyCapture by remember { mutableStateOf(false) }
+    var bubbleOn by remember { mutableStateOf(BubbleLauncher.isRunning()) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                bubbleOn = BubbleLauncher.isRunning()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LaunchedEffect(stage) {
         val currentStage = stage
@@ -113,35 +133,66 @@ fun CaptureScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        Row(
+        Column(
             modifier = Modifier
+                .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = S.gutter, vertical = S.sm),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onOpenAsk) {
-                Text(
-                    text = "ask",
-                    style = SmritiType.Button,
-                    color = S.OnDark
+                .background(
+                    Brush.verticalGradient(
+                        0f to S.InkDeep.copy(alpha = 0.72f),
+                        0.72f to S.InkDeep.copy(alpha = 0.55f),
+                        1f to Color.Transparent
+                    )
                 )
+                .statusBarsPadding()
+                .padding(bottom = S.gutter),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = S.gutter, vertical = S.sm),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onOpenAsk) {
+                    Text(
+                        text = "ask",
+                        style = SmritiType.Button,
+                        color = S.OnDark
+                    )
+                }
+
+                BracketLabel(
+                    text = BuildBadge.label,
+                    labelColor = S.OnDark.copy(alpha = 0.65f),
+                    bracketColor = S.Red
+                )
+
+                TextButton(onClick = onOpenTimeline) {
+                    Text(
+                        text = "timeline",
+                        style = SmritiType.Button,
+                        color = S.OnDark
+                    )
+                }
             }
 
             BracketLabel(
-                text = BuildBadge.label,
-                labelColor = S.OnDark.copy(alpha = 0.65f),
-                bracketColor = S.Red
+                text = if (bubbleOn) "bubble on" else "bubble off",
+                labelColor = if (bubbleOn) S.Red else S.OnDark.copy(alpha = 0.55f),
+                bracketColor = if (bubbleOn) S.Red else S.OnDark.copy(alpha = 0.55f),
+                modifier = Modifier
+                    .clickable {
+                        bubbleOn = if (bubbleOn) {
+                            BubbleLauncher.stop(context)
+                            false
+                        } else {
+                            BubbleLauncher.start(context)
+                        }
+                    }
+                    .padding(vertical = S.xs)
             )
-
-            TextButton(onClick = onOpenTimeline) {
-                Text(
-                    text = "timeline",
-                    style = SmritiType.Button,
-                    color = S.OnDark
-                )
-            }
         }
 
         stage?.let { currentStage ->
@@ -159,7 +210,7 @@ fun CaptureScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 64.dp),
+                    .padding(top = 96.dp),
                 shape = S.r6,
                 color = S.InkDeep.copy(alpha = 0.75f),
                 border = BorderStroke(S.hairlineWidth, if (isFailed) S.Red else S.HairlineOnDark)

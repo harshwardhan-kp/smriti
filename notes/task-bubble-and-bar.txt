@@ -1,0 +1,215 @@
+================================================================================
+SMRITI VISUAL LANGUAGE — HOUSE RULES
+Read this whole block before you change anything. It is not advisory.
+================================================================================
+
+The app is being moved onto the design language of antimattr.one. That language has already
+been ported into the codebase for you. Your job is to APPLY it, not to design anything. If a
+value you need is not in the files below, you are doing something the design does not call for
+— use the nearest thing that IS there.
+
+READ THESE THREE FILES FIRST, IN FULL:
+    app/src/main/java/com/smriti/app/ui/theme/Tokens.kt      — object S: every colour, every spacing step, every radius
+    app/src/main/java/com/smriti/app/ui/theme/Type.kt        — object SmritiType: every text style
+    app/src/main/java/com/smriti/app/ui/components/Primitives.kt — BracketLabel, NodeSquare, HairlineRule, DashedRule, SmritiButton, SmritiOutlineButton, SmritiChip, ChipKind, DisplayHeading, SectionLabel
+
+ABSOLUTE RULES
+
+1. NO LITERAL COLOURS. Not one `Color(0xFF...)` may survive in the file you are editing. Every
+   screen currently declares its own private `ColorAmber` / `ColorInk` / `ColorCream` /
+   `ColorCardBg` / `ColorChipBg` / `ColorRedAlert` at the top — DELETE those declarations and
+   replace every use with a member of `S`. The mapping is fixed:
+       ColorInk        (was the near-black page)  -> S.Paper        [the page is now near-white]
+       ColorCream      (was the light type)       -> S.Ink          [type is now near-black]
+       ColorCream@0.6  (was muted type)           -> S.Muted
+       ColorCream@0.45 (was faintest type)        -> S.MutedSoft
+       ColorCardBg / ColorChipBg (dark cards)     -> S.PaperSunk
+       ColorAmber      (was the accent)           -> S.Red          [the accent is now red]
+       ColorRedAlert   (was the live/overdue red) -> S.Red
+       a "still working" state                    -> S.Amber
+       a "done / settled" state                   -> S.Green
+       any border or divider                      -> S.Hairline
+
+2. NO LITERAL TEXT STYLES. No `fontSize =`, no `fontFamily =`, no `MaterialTheme.typography.*`,
+   no `fontWeight =` except where a SmritiType style already carries it. Every Text() gets
+   `style = SmritiType.<something>`. The mapping is fixed:
+       a screen's own title / a record's title  -> SmritiType.DisplaySmall  (Instrument Serif)
+       a card title                             -> SmritiType.Title
+       prose, summaries                         -> SmritiType.Body
+       a card's supporting line                 -> SmritiType.BodySmall
+       a control's sans label                   -> SmritiType.Label
+       timestamps, tags, counts, states         -> SmritiType.Meta / MetaMedium
+       any button label                         -> handled by SmritiButton, do not style it
+       transcripts and OCR output               -> SmritiType.Mono
+
+3. EVERY PIECE OF UI COPY IS LOWERCASE. Every string on antimattr.one is lowercase, including
+   its own name. "Timeline" becomes "timeline". "Open tasks" becomes "open tasks". "Could not
+   extract" becomes "could not extract". This applies to headings, labels, buttons, empty
+   states, placeholders and content descriptions' visible counterparts. It does NOT apply to
+   user data (a transcript, a person's name, a title the model wrote) — never lowercase what a
+   person said or wrote. It does not apply to contentDescription strings, which are for a
+   screen reader and should stay ordinary sentence case.
+
+4. NO LITERAL SPACING. Use S.xs (4), S.sm (6), S.md (10), S.gutter (16), S.lg (24), S.xl (32),
+   S.section (44). Horizontal page padding is S.gutter and nothing else.
+
+5. NO LITERAL RADII. Use S.r6 (the default — use this unless told otherwise), S.r8, S.r24,
+   S.pill. 12.dp and 16.dp corners are gone from this app.
+
+6. NO ELEVATION, NO SHADOWS. This language is drawn, not stacked. A card is separated by a
+   hairline border and a background one step back (S.PaperSunk), never by a shadow. If a
+   Material component insists on elevation, set it to 0.dp.
+
+7. Metadata wears brackets. Any small mono fact — a timestamp, a state, a count, a due date —
+   goes through `BracketLabel("...")`, which renders `[label]` with the brackets in red. Do not
+   hand-write square brackets into a string; call the component.
+
+WHAT NOT TO BREAK
+
+You are changing appearance ONLY. Do not change any of the following, in any file:
+  - navigation, callbacks, or the shape of any function's parameters
+  - ViewModels, DAOs, Flows, or anything that reads or writes the database
+  - which composable is rendered for which enrichmentState
+  - LazyColumn item keys (they are prefixed "task-" / "record-" to stop a key collision that
+    used to crash the timeline on scroll — leave them exactly as they are)
+  - the try/catch around BitmapFactory.decodeFile, or the branch that renders a mic glyph when
+    record.photoPath is blank (that is how a voice-only memory is drawn)
+  - any contentDescription that already exists
+
+TOOLCHAIN
+- Kotlin 2.0.21. Compose BOM 2024.09.03. minSdk 26, targetSdk 36.
+- material-icons-extended is available.
+- This app is offline-first; the `offline` flavour is the one that matters. `devcloud` is on
+  hold — add nothing to it, but it MUST still compile.
+- Must build BOTH flavours and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+================================================================================
+
+TASK: a frosted bar behind the capture screen's top row, and a way for a person to actually
+turn the bubble on.
+
+FILES THAT CHANGE:
+    app/src/main/java/com/smriti/app/capture/BubbleLauncher.kt   (CREATE)
+    app/src/main/java/com/smriti/app/MainActivity.kt             (handleStartBubble only)
+    app/src/main/java/com/smriti/app/ui/CaptureScreen.kt
+Nothing else.
+
+Note the house rules' colour mapping is INVERTED on this screen — it sits over a live camera
+preview, so its chrome is dark. Use S.OnDark for type, S.InkDeep for chrome, S.HairlineOnDark
+for lines. Every other rule (lowercase copy, SmritiType styles, S spacing, S.r6, no elevation,
+brackets on metadata) applies in full.
+
+--------------------------------------------------------------------------------
+PART 1 — why the bubble "stopped working", and the fix
+--------------------------------------------------------------------------------
+It is not broken. It has never been reachable. Grep the codebase: `BubbleService.start` is
+called from exactly one place, `MainActivity.handleStartBubble()`, which is called from exactly
+one place, an adb intent extra (`--ez smriti_bubble true`). There is no control anywhere in the
+UI. A force-stop, a reboot, or any system kill ends it permanently with no way for a person to
+bring it back.
+
+So: give it a control.
+
+1a. CREATE app/src/main/java/com/smriti/app/capture/BubbleLauncher.kt
+
+    package com.smriti.app.capture
+    object BubbleLauncher {
+        fun isRunning(): Boolean = BubbleService.isRunning()
+        /**
+         * Returns true when the bubble was started, false when the user was sent to a
+         * permission screen instead and nothing was started yet.
+         */
+        fun start(context: Context): Boolean { ... }
+        fun stop(context: Context) { BubbleService.stop(context) }
+    }
+
+    `start` must contain exactly the logic that is in MainActivity.handleStartBubble() today —
+    read it and move it, do not rewrite it:
+      - if Build.VERSION.SDK_INT >= M and !Settings.canDrawOverlays(context): launch
+        Settings.ACTION_MANAGE_OVERLAY_PERMISSION with Uri.parse("package:${context.packageName}")
+        and return false
+      - if !ScreenCaptureService.isArmed(): start ScreenCaptureConsentActivity
+      - BubbleService.start(context); return true
+    Because this may now be called with a non-Activity context, add
+    Intent.FLAG_ACTIVITY_NEW_TASK to both startActivity intents. That flag is harmless when the
+    context IS an Activity and mandatory when it is not.
+
+1b. MainActivity.handleStartBubble() becomes a one-liner delegating to BubbleLauncher.start(this).
+    Change NOTHING else in MainActivity — not onCreate, not onNewIntent, not any intent extra,
+    not SmritiApp, not the NavHost. The adb extras must keep working exactly as they do.
+
+1c. CaptureScreen gets the control. Directly BELOW the existing top row (ask / badge / timeline),
+    centred, add a toggle in the app's own bracket language:
+
+        var bubbleOn by remember { mutableStateOf(BubbleLauncher.isRunning()) }
+
+    Re-sync it whenever the screen resumes, because the user may have granted the overlay
+    permission in Settings and come back, or the service may have been killed while they were
+    away. Use a LifecycleEventObserver on LocalLifecycleOwner.current.lifecycle for
+    Lifecycle.Event.ON_RESUME that sets `bubbleOn = BubbleLauncher.isRunning()`, and remove the
+    observer in the DisposableEffect's onDispose.
+
+    Render it as:
+        BracketLabel(
+            text = if (bubbleOn) "bubble on" else "bubble off",
+            labelColor = if (bubbleOn) S.Red else S.OnDark.copy(alpha = 0.55f),
+            bracketColor = if (bubbleOn) S.Red else S.OnDark.copy(alpha = 0.55f),
+            modifier = Modifier.clickable {
+                bubbleOn = if (bubbleOn) { BubbleLauncher.stop(context); false }
+                           else { BubbleLauncher.start(context) }
+            }
+        )
+    where `context` is LocalContext.current. Note `start` returns Boolean, so a user who gets
+    sent to the overlay-permission screen correctly leaves the label reading "bubble off" — and
+    the ON_RESUME sync above is what flips it to "on" when they come back having granted it.
+
+    Give it `Modifier.padding(vertical = S.xs)` and centre it horizontally under the row.
+
+--------------------------------------------------------------------------------
+PART 2 — the frosted bar
+--------------------------------------------------------------------------------
+The top row currently floats directly on the camera image with nothing behind it. Over a bright
+or busy scene the labels are hard to read and the bar does not read as a surface at all.
+
+Put a scrim behind it. Wrap the top row AND the new bubble toggle in a single Column, aligned
+to Alignment.TopCenter of the outer Box, with:
+
+    Modifier
+        .fillMaxWidth()
+        .background(
+            Brush.verticalGradient(
+                0f    to S.InkDeep.copy(alpha = 0.72f),
+                0.72f to S.InkDeep.copy(alpha = 0.55f),
+                1f    to Color.Transparent
+            )
+        )
+        .statusBarsPadding()
+        .padding(bottom = S.gutter)
+
+The `.background` must come BEFORE `.statusBarsPadding()` in the chain so the scrim extends up
+behind the status bar rather than starting below it. Move the existing `.statusBarsPadding()`
+off the inner Row — the Column owns it now — and keep the Row's
+`.padding(horizontal = S.gutter, vertical = S.sm)`.
+
+BE HONEST ABOUT WHAT THIS IS, in your summary: it is a gradient scrim, not a true backdrop
+blur. A real blur is not achievable here — the thing behind it is a CameraX PreviewView, which
+renders on a SurfaceView, and neither Compose's Modifier.blur nor RenderEffect can sample a
+SurfaceView's contents. Do NOT add a blur library, do NOT switch PreviewView to COMPATIBLE mode
+hoping it will work, and do NOT apply Modifier.blur to the preview itself — that would blur the
+whole viewfinder, which is the opposite of what is wanted. The gradient is the correct solution
+and it is what camera apps actually ship.
+
+Add a `HairlineRule(color = S.HairlineOnDark)` as the Column's last child ONLY if it still reads
+well against the gradient's transparent lower edge; if it looks like a hard line floating in a
+fade, leave it out and say so in your summary.
+
+The status pill (`stage?.let { ... }`) sits at `padding(top = 64.dp)` under the old row. Now
+that the bar is taller, change that to `padding(top = 96.dp)` so the pill clears the toggle.
+
+DO NOT change: the AndroidView/PreviewView block, vm.bindCamera, the DisposableEffect that
+manages the status-bar icon appearance, the LaunchedEffect that navigates on Done, the gesture
+handlers, the shutter, the mic button, the hint text, or any state variable name.
+
+Build both flavours, keep tests green, and print a summary.
