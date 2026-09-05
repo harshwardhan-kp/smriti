@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,7 +36,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -136,54 +134,43 @@ fun CaptureScreen(
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        0f to S.InkDeep.copy(alpha = 0.72f),
-                        0.72f to S.InkDeep.copy(alpha = 0.55f),
-                        1f to Color.Transparent
-                    )
-                )
                 .statusBarsPadding()
-                .padding(bottom = S.gutter),
+                .padding(horizontal = S.gutter)
+                .padding(top = S.md),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // the floating pill
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = S.gutter, vertical = S.sm),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .background(S.Paper.copy(alpha = 0.82f), S.r24)
+                    .padding(horizontal = S.gutter, vertical = S.md),
+                horizontalArrangement = Arrangement.spacedBy(S.gutter),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onOpenAsk) {
-                    Text(
-                        text = "ask",
-                        style = SmritiType.Button,
-                        color = S.OnDark
-                    )
-                }
-
+                // Inside the pill, red means "this is on" and nothing else. Elsewhere in the
+                // app a BracketLabel wears red brackets over a quiet label, but a nav bar reads
+                // as a set: if every item carries the accent then the one item that is actually
+                // active has no way left to say so. These two are destinations, never a state,
+                // so they stay ink.
                 BracketLabel(
-                    text = BuildBadge.label,
-                    labelColor = S.OnDark.copy(alpha = 0.65f),
-                    bracketColor = S.Red
+                    text = "ask",
+                    labelColor = S.Ink,
+                    bracketColor = S.Ink,
+                    modifier = Modifier.clickable { onOpenAsk() }
                 )
 
-                TextButton(onClick = onOpenTimeline) {
-                    Text(
-                        text = "timeline",
-                        style = SmritiType.Button,
-                        color = S.OnDark
-                    )
-                }
-            }
+                BracketLabel(
+                    text = "timeline",
+                    labelColor = S.Ink,
+                    bracketColor = S.Ink,
+                    modifier = Modifier.clickable { onOpenTimeline() }
+                )
 
-            BracketLabel(
-                text = if (bubbleOn) "bubble on" else "bubble off",
-                labelColor = if (bubbleOn) S.Red else S.OnDark.copy(alpha = 0.55f),
-                bracketColor = if (bubbleOn) S.Red else S.OnDark.copy(alpha = 0.55f),
-                modifier = Modifier
-                    .clickable {
+                BracketLabel(
+                    text = if (bubbleOn) "bubble on" else "bubble off",
+                    labelColor = if (bubbleOn) S.Red else S.Muted,
+                    bracketColor = if (bubbleOn) S.Red else S.Muted,
+                    modifier = Modifier.clickable {
                         bubbleOn = if (bubbleOn) {
                             BubbleLauncher.stop(context)
                             false
@@ -191,8 +178,23 @@ fun CaptureScreen(
                             BubbleLauncher.start(context)
                         }
                     }
-                    .padding(vertical = S.xs)
-            )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(S.md))
+
+            // the build badge, on its own, below the pill
+            Box(
+                modifier = Modifier
+                    .background(S.InkDeep.copy(alpha = 0.55f), S.r6)
+                    .padding(horizontal = S.md, vertical = S.xs)
+            ) {
+                BracketLabel(
+                    text = BuildBadge.label,
+                    labelColor = S.OnDark.copy(alpha = 0.75f),
+                    bracketColor = S.Red
+                )
+            }
         }
 
         stage?.let { currentStage ->
@@ -210,7 +212,7 @@ fun CaptureScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 96.dp),
+                    .padding(top = 128.dp),
                 shape = S.r6,
                 color = S.InkDeep.copy(alpha = 0.75f),
                 border = BorderStroke(S.hairlineWidth, if (isFailed) S.Red else S.HairlineOnDark)

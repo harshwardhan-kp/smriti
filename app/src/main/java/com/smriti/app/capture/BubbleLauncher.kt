@@ -25,13 +25,17 @@ object BubbleLauncher {
             return false
         }
 
-        if (!ScreenCaptureService.isArmed()) {
-            val consentIntent = Intent(context, ScreenCaptureConsentActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(consentIntent)
-        }
-
+        // Deliberately NOT asking for MediaProjection consent here.
+        //
+        // Two bubbles come up together and only one of them needs it. The mic bubble records a
+        // voice note and never touches the screen; demanding screen-recording consent before it
+        // will even appear puts Android's "Smriti will be able to access everything on your
+        // screen, including audio, passwords and other sensitive information" sheet in front of
+        // someone who only wanted to talk. That is a bad trade and it is also unnecessary:
+        // BubbleService.startCapture already checks isArmed() and launches the consent activity
+        // itself, the first time the capture bubble is actually held.
+        //
+        // So consent is asked for at the moment it is needed, by the feature that needs it.
         BubbleService.start(context)
         return true
     }

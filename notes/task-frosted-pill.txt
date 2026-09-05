@@ -1,0 +1,195 @@
+================================================================================
+SMRITI VISUAL LANGUAGE — HOUSE RULES
+Read this whole block before you change anything. It is not advisory.
+================================================================================
+
+The app is being moved onto the design language of antimattr.one. That language has already
+been ported into the codebase for you. Your job is to APPLY it, not to design anything. If a
+value you need is not in the files below, you are doing something the design does not call for
+— use the nearest thing that IS there.
+
+READ THESE THREE FILES FIRST, IN FULL:
+    app/src/main/java/com/smriti/app/ui/theme/Tokens.kt      — object S: every colour, every spacing step, every radius
+    app/src/main/java/com/smriti/app/ui/theme/Type.kt        — object SmritiType: every text style
+    app/src/main/java/com/smriti/app/ui/components/Primitives.kt — BracketLabel, NodeSquare, HairlineRule, DashedRule, SmritiButton, SmritiOutlineButton, SmritiChip, ChipKind, DisplayHeading, SectionLabel
+
+ABSOLUTE RULES
+
+1. NO LITERAL COLOURS. Not one `Color(0xFF...)` may survive in the file you are editing. Every
+   screen currently declares its own private `ColorAmber` / `ColorInk` / `ColorCream` /
+   `ColorCardBg` / `ColorChipBg` / `ColorRedAlert` at the top — DELETE those declarations and
+   replace every use with a member of `S`. The mapping is fixed:
+       ColorInk        (was the near-black page)  -> S.Paper        [the page is now near-white]
+       ColorCream      (was the light type)       -> S.Ink          [type is now near-black]
+       ColorCream@0.6  (was muted type)           -> S.Muted
+       ColorCream@0.45 (was faintest type)        -> S.MutedSoft
+       ColorCardBg / ColorChipBg (dark cards)     -> S.PaperSunk
+       ColorAmber      (was the accent)           -> S.Red          [the accent is now red]
+       ColorRedAlert   (was the live/overdue red) -> S.Red
+       a "still working" state                    -> S.Amber
+       a "done / settled" state                   -> S.Green
+       any border or divider                      -> S.Hairline
+
+2. NO LITERAL TEXT STYLES. No `fontSize =`, no `fontFamily =`, no `MaterialTheme.typography.*`,
+   no `fontWeight =` except where a SmritiType style already carries it. Every Text() gets
+   `style = SmritiType.<something>`. The mapping is fixed:
+       a screen's own title / a record's title  -> SmritiType.DisplaySmall  (Instrument Serif)
+       a card title                             -> SmritiType.Title
+       prose, summaries                         -> SmritiType.Body
+       a card's supporting line                 -> SmritiType.BodySmall
+       a control's sans label                   -> SmritiType.Label
+       timestamps, tags, counts, states         -> SmritiType.Meta / MetaMedium
+       any button label                         -> handled by SmritiButton, do not style it
+       transcripts and OCR output               -> SmritiType.Mono
+
+3. EVERY PIECE OF UI COPY IS LOWERCASE. Every string on antimattr.one is lowercase, including
+   its own name. "Timeline" becomes "timeline". "Open tasks" becomes "open tasks". "Could not
+   extract" becomes "could not extract". This applies to headings, labels, buttons, empty
+   states, placeholders and content descriptions' visible counterparts. It does NOT apply to
+   user data (a transcript, a person's name, a title the model wrote) — never lowercase what a
+   person said or wrote. It does not apply to contentDescription strings, which are for a
+   screen reader and should stay ordinary sentence case.
+
+4. NO LITERAL SPACING. Use S.xs (4), S.sm (6), S.md (10), S.gutter (16), S.lg (24), S.xl (32),
+   S.section (44). Horizontal page padding is S.gutter and nothing else.
+
+5. NO LITERAL RADII. Use S.r6 (the default — use this unless told otherwise), S.r8, S.r24,
+   S.pill. 12.dp and 16.dp corners are gone from this app.
+
+6. NO ELEVATION, NO SHADOWS. This language is drawn, not stacked. A card is separated by a
+   hairline border and a background one step back (S.PaperSunk), never by a shadow. If a
+   Material component insists on elevation, set it to 0.dp.
+
+7. Metadata wears brackets. Any small mono fact — a timestamp, a state, a count, a due date —
+   goes through `BracketLabel("...")`, which renders `[label]` with the brackets in red. Do not
+   hand-write square brackets into a string; call the component.
+
+WHAT NOT TO BREAK
+
+You are changing appearance ONLY. Do not change any of the following, in any file:
+  - navigation, callbacks, or the shape of any function's parameters
+  - ViewModels, DAOs, Flows, or anything that reads or writes the database
+  - which composable is rendered for which enrichmentState
+  - LazyColumn item keys (they are prefixed "task-" / "record-" to stop a key collision that
+    used to crash the timeline on scroll — leave them exactly as they are)
+  - the try/catch around BitmapFactory.decodeFile, or the branch that renders a mic glyph when
+    record.photoPath is blank (that is how a voice-only memory is drawn)
+  - any contentDescription that already exists
+
+TOOLCHAIN
+- Kotlin 2.0.21. Compose BOM 2024.09.03. minSdk 26, targetSdk 36.
+- material-icons-extended is available.
+- This app is offline-first; the `offline` flavour is the one that matters. `devcloud` is on
+  hold — add nothing to it, but it MUST still compile.
+- Must build BOTH flavours and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+================================================================================
+
+TASK: replace the capture screen's dark top scrim with a light floating frosted pill.
+ONE FILE CHANGES: app/src/main/java/com/smriti/app/ui/CaptureScreen.kt
+
+WHY, AND WHAT IT SHOULD LOOK LIKE
+The reference is antimattr.one's own navigation bar: a light, translucent, generously rounded
+bar FLOATING over the page content, inset from the edges, holding a row of [bracket] labels in
+mono — the active one red, the rest ink. It reads as a pane of frosted glass laid on top of the
+page.
+
+What is there now is the opposite: a full-bleed dark gradient scrim fused to the top of the
+screen, with white labels on it. Replace it.
+
+The single most important change is that the bar becomes LIGHT and FLOATS. It is a rounded
+panel inset from the screen edges with the camera visible all around it — above it, beside it,
+below it. It must not touch any edge and it must not fade into anything.
+
+--------------------------------------------------------------------------------
+ABOUT THE BLUR — read this before you reach for anything
+--------------------------------------------------------------------------------
+You cannot blur what is behind this bar. The thing behind it is a CameraX PreviewView, which
+renders on a SurfaceView; neither Compose's Modifier.blur nor RenderEffect nor any Compose blur
+library can sample a SurfaceView's contents. Do NOT add a dependency, do NOT switch PreviewView
+to COMPATIBLE mode, do NOT apply Modifier.blur to the preview itself.
+
+The look is achieved with opacity instead, and at this opacity the difference is not visible:
+frosted glass over a busy scene reads as a bright diffuse panel, which is exactly what a
+high-alpha light fill gives you. Say in your summary that this is a translucent panel and not a
+gaussian blur.
+
+--------------------------------------------------------------------------------
+THE BAR
+--------------------------------------------------------------------------------
+Replace the whole Column that currently carries the vertical-gradient background. The new
+structure, aligned to Alignment.TopCenter of the outer Box:
+
+    Column(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .statusBarsPadding()
+            .padding(horizontal = S.gutter, top = S.md),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // the floating pill
+        Row(
+            modifier = Modifier
+                .background(S.Paper.copy(alpha = 0.82f), S.r24)
+                .padding(horizontal = S.gutter, vertical = S.md),
+            horizontalArrangement = Arrangement.spacedBy(S.gutter),
+            verticalAlignment = Alignment.CenterVertically
+        ) { ...the three labels... }
+
+        Spacer(modifier = Modifier.height(S.md))
+
+        // the build badge, on its own, below the pill
+        BracketLabel(
+            text = BuildBadge.label,
+            labelColor = S.OnDark.copy(alpha = 0.75f),
+            bracketColor = S.Red
+        )
+    }
+
+Note `.statusBarsPadding()` now comes BEFORE the padding and there is no `.fillMaxWidth()` —
+the pill must size to its contents and float, not stretch.
+
+THE THREE LABELS INSIDE THE PILL. All are BracketLabel, all mono, all lowercase, and because
+the pill is light they take INK colouring, not white:
+
+    BracketLabel("ask",  labelColor = S.Muted, bracketColor = S.Red,
+                 modifier = Modifier.clickable { onOpenAsk() })
+
+    BracketLabel("timeline", labelColor = S.Muted, bracketColor = S.Red,
+                 modifier = Modifier.clickable { onOpenTimeline() })
+
+    BracketLabel(
+        text = if (bubbleOn) "bubble on" else "bubble off",
+        labelColor  = if (bubbleOn) S.Red else S.Muted,
+        bracketColor = if (bubbleOn) S.Red else S.Muted,
+        modifier = Modifier.clickable { ...the existing toggle body, unchanged... }
+    )
+
+Delete the two TextButtons that currently hold "ask" and "timeline" — the bracket labels replace
+them entirely, which is what makes the bar match the reference. Keep onOpenAsk and
+onOpenTimeline wired to exactly the same lambdas they use today.
+
+The build badge keeps white-ish colouring because it now sits on the raw camera image, not on
+the pill. Check it stays readable; if it does not, wrap it in its own small
+`S.InkDeep.copy(alpha = 0.55f)` pill with shape S.r6 and `padding(horizontal = S.md, vertical = S.xs)`,
+and say in your summary that you did.
+
+--------------------------------------------------------------------------------
+KNOCK-ON CHANGES
+--------------------------------------------------------------------------------
+1. The status pill (`stage?.let { ... }`) currently sits at `padding(top = 96.dp)`. The bar is a
+   different height now. Change it to `padding(top = 128.dp)` so it clears both the pill and the
+   badge beneath it.
+
+2. The status-bar icons. The DisposableEffect at the top of the composable currently forces them
+   WHITE for this screen. That is still correct — they sit over the raw camera image, above the
+   floating pill, not on it. Leave that effect exactly as it is.
+
+3. Nothing else on the screen changes. Do NOT touch the AndroidView/PreviewView block,
+   vm.bindCamera, the lifecycle observer that syncs bubbleOn, the LaunchedEffect that navigates
+   on Done, the gesture handlers, the shutter, the mic button, or the hint text.
+
+Build both flavours, keep tests green, print a summary, and state the pill's final measured
+composition (fill colour, alpha, radius, insets).
