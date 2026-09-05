@@ -41,30 +41,49 @@ class CapturePipeline(
                 val photoDeferred = async { camera.capture() }
                 Pair(photoDeferred.await(), asrDeferred.await())
             }
-            val ocrText = ""
 
-            val now = System.currentTimeMillis()
-            val record = RecordEntity(
-                createdAt = now,
-                photoPath = photoFile.absolutePath,
-                ocrText = ocrText,
-                transcript = transcript,
-                title = titleFor("", transcript, ""),
-                summary = "",
-                peopleJson = "[]",
-                amountsJson = "[]",
-                tagsJson = "[]",
-                embedding = embedFor("", "", "", transcript),
-                enrichmentState = "PENDING"
-            )
-
-            val recordId = dao.insertRecord(record)
+            val recordId = saveRecord(photoFile.absolutePath, transcript)
             emit(CaptureStage.Done(recordId))
-            Enricher.request(context)
         } catch (t: Throwable) {
             emit(CaptureStage.Failed(t.message ?: "Capture pipeline failed"))
         }
     }.flowOn(Dispatchers.IO)
+
+    fun runVoiceOnly(): Flow<CaptureStage> = flow {
+        try {
+            emit(CaptureStage.Listening)
+            val transcript = asr.transcribe()
+            if (!isWorthSaving(transcript)) {
+                emit(CaptureStage.Failed("Nothing heard"))
+                return@flow
+            }
+            val recordId = saveRecord("", transcript)
+            emit(CaptureStage.Done(recordId))
+        } catch (t: Throwable) {
+            emit(CaptureStage.Failed(t.message ?: "Capture pipeline failed"))
+        }
+    }.flowOn(Dispatchers.IO)
+
+    private suspend fun saveRecord(photoPath: String, transcript: String): Long {
+        val ocrText = ""
+        val now = System.currentTimeMillis()
+        val record = RecordEntity(
+            createdAt = now,
+            photoPath = photoPath,
+            ocrText = ocrText,
+            transcript = transcript,
+            title = titleFor("", transcript, ""),
+            summary = "",
+            peopleJson = "[]",
+            amountsJson = "[]",
+            tagsJson = "[]",
+            embedding = embedFor("", "", "", transcript),
+            enrichmentState = "PENDING"
+        )
+        val recordId = dao.insertRecord(record)
+        Enricher.request(context)
+        return recordId
+    }
 
     /**
      * Returns the little-endian float32 blob for this record, or null when the embedder asset
@@ -89,4 +108,9 @@ class CapturePipeline(
      */
     private fun titleFor(modelTitle: String, transcript: String, ocrText: String): String =
         Enricher.titleFor(modelTitle, transcript, ocrText)
+
+    companion object {
+        internal fun isWorthSaving(transcript: String): Boolean =
+            transcript.trim().isNotEmpty()
+    }
 }

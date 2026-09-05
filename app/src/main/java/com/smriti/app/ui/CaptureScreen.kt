@@ -18,8 +18,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -58,7 +62,9 @@ fun CaptureScreen(
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val stage by vm.stage.collectAsState()
-    var isLongPressed by remember { mutableStateOf(false) }
+    var isShutterHeld by remember { mutableStateOf(false) }
+    var isMicHeld by remember { mutableStateOf(false) }
+    var isVoiceOnlyCapture by remember { mutableStateOf(false) }
 
     LaunchedEffect(stage) {
         val currentStage = stage
@@ -69,9 +75,12 @@ fun CaptureScreen(
             vm.consumeTerminalStage()
             onRecordSaved(currentStage.recordId)
         }
+        if (currentStage is CaptureStage.Done || currentStage is CaptureStage.Failed) {
+            isVoiceOnlyCapture = false
+        }
     }
 
-    val isListening = isLongPressed || stage is CaptureStage.Listening
+    val isShutterListening = isShutterHeld || (!isVoiceOnlyCapture && stage is CaptureStage.Listening)
 
     Box(
         modifier = Modifier
@@ -171,15 +180,16 @@ fun CaptureScreen(
                 .padding(bottom = 36.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            val isListeningHint = isMicHeld || isShutterHeld
             Text(
-                text = if (isListening) {
-                    "LISTENING — release to stop"
-                } else {
-                    "Tap for a photo · Hold to add your voice"
+                text = when {
+                    isMicHeld -> "LISTENING — voice only, release to stop"
+                    isShutterHeld -> "LISTENING — release to stop"
+                    else -> "Tap for a photo · Hold to add your voice · Hold the mic for voice only"
                 },
-                color = if (isListening) ColorRedAlert else ColorCream,
+                color = if (isListeningHint) ColorRedAlert else ColorCream,
                 style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (isListening) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (isListeningHint) FontWeight.Bold else FontWeight.Normal,
                 modifier = Modifier
                     .background(ColorInk.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 12.dp, vertical = 4.dp)
@@ -187,41 +197,93 @@ fun CaptureScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            Box(
-                modifier = Modifier
-                    .size(84.dp)
-                    .then(
-                        if (isListening) {
-                            Modifier.border(4.dp, ColorRedAlert, CircleShape)
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .padding(if (isListening) 6.dp else 0.dp)
-                    .background(ColorAmber, CircleShape)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                try {
-                                    tryAwaitRelease()
-                                } finally {
-                                    // Releasing the button must END the recording. Without this
-                                    // the recorder runs to its 15 s timeout and the user waits
-                                    // for nothing after they have stopped speaking.
-                                    if (isLongPressed) vm.stopVoice()
-                                    isLongPressed = false
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .border(
+                            width = if (isMicHeld) 4.dp else 2.dp,
+                            color = if (isMicHeld) ColorRedAlert else ColorCream.copy(alpha = 0.7f),
+                            shape = CircleShape
+                        )
+                        .background(
+                            color = if (isMicHeld) ColorRedAlert.copy(alpha = 0.15f) else Color.Transparent,
+                            shape = CircleShape
+                        )
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onPress = {
+                                    try {
+                                        tryAwaitRelease()
+                                    } finally {
+                                        if (isMicHeld) vm.stopVoice()
+                                        isMicHeld = false
+                                    }
+                                },
+                                onLongPress = {
+                                    isMicHeld = true
+                                    isVoiceOnlyCapture = true
+                                    vm.captureVoiceOnly()
                                 }
-                            },
-                            onTap = {
-                                vm.capture(false)
-                            },
-                            onLongPress = {
-                                isLongPressed = true
-                                vm.capture(true)
+                            )
+                        }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Record voice only",
+                        tint = ColorCream
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(24.dp))
+
+                Box(
+                    modifier = Modifier
+                        .size(84.dp)
+                        .then(
+                            if (isShutterListening) {
+                                Modifier.border(4.dp, ColorRedAlert, CircleShape)
+                            } else {
+                                Modifier
                             }
                         )
-                    }
-            )
+                        .padding(if (isShutterListening) 6.dp else 0.dp)
+                        .background(ColorAmber, CircleShape)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onPress = {
+                                    try {
+                                        tryAwaitRelease()
+                                    } finally {
+                                        // Releasing the button must END the recording. Without this
+                                        // the recorder runs to its 15 s timeout and the user waits
+                                        // for nothing after they have stopped speaking.
+                                        if (isShutterHeld) vm.stopVoice()
+                                        isShutterHeld = false
+                                    }
+                                },
+                                onTap = {
+                                    isVoiceOnlyCapture = false
+                                    vm.capture(false)
+                                },
+                                onLongPress = {
+                                    isShutterHeld = true
+                                    isVoiceOnlyCapture = false
+                                    vm.capture(true)
+                                }
+                            )
+                        }
+                )
+
+                Spacer(modifier = Modifier.width(24.dp))
+
+                Spacer(modifier = Modifier.width(56.dp))
+            }
         }
     }
 }
