@@ -440,3 +440,111 @@ Both debug-signed, which is what makes them installable without a keystore.
 is confirmed present in both binaries by dex inspection, and everything builds with 24 tests
 green and lint clean — but `PlatformAsr.stopListening()` and the runtime-key path have not been
 exercised on a phone. Plug in and run `./scripts/verify-on-device.sh offline`.
+
+---
+
+### 2026-09-05 — iQOO 15 (SM8850): capture rebuilt, engine swapped, three earlier claims falsified
+
+First session on the target hardware. Two iQOO 15 units, Android 16, SM8850, 15.6 GB RAM.
+Branch: `offline-pipeline-rework`, 12+ commits, `main` untouched.
+
+**Corrections to claims above in this file. Read these before trusting the older entries.**
+
+**"MediaPipe's GPU LLM path is tuned for Adreno" is wrong.** It crashes on Adreno too, and the
+crash reproduces on two independent handsets. Device 1: `SIGSEGV`, fault addr 0x0. Device 2:
+`SIGABRT`. Both inside `Java_..._LlmTaskRunner_nativePredictSync`, both after the model loaded
+successfully. The USB link was polled throughout and never dropped, so this is not a
+disconnection artefact. Treat MediaPipe's GPU path as broken on Snapdragon 8 Elite Gen 5, not
+as a Mali-specific defect. `BackendPolicy`'s sentinel worked correctly on a fresh device: it
+quarantined the GPU after one crash with no intervention.
+
+**"devcloud exists because a generation takes 12–60 s on a handset" no longer holds here.**
+On this phone the on-device CPU path beat the cloud round trip: Muse Spark 4750 ms vs Gemma 1B
+961 ms for the same prompt. devcloud is still useful for prompt work, but not for the stated
+reason. Note also that this device's numbers drift with temperature — Gemma 1B measured
+12.5 tok/s on a cool handset and 7.5–9.0 on one that had been running models for hours.
+
+**The `muse` CLI 402 billing block is gone.** `muse exec --model muse-spark-1.3-contributor`
+works. Note the effort is a separate `--reasoning-effort` flag, not part of the model id.
+That said, muse stalled for 25 minutes on one dispatch with no output and no files written;
+`agy --model gemini-3.8-flash-high` was faster and more reliable across ~12 dispatches. Set
+`--print-timeout` on agy — the default is 5 minutes and a large spec will silently time out
+(it writes nothing on timeout, so retrying is safe).
+
+**Architecture changes**
+
+Capture no longer runs any model. It was: photo → OCR → ASR → LLM → insert, and the record
+only appeared after the language model finished — about 40 s of the user staring at a spinner
+for a transcript that had been ready in two. It is now: photo and ASR concurrently → insert →
+show, with all model work in a background `Enricher` pass. Measured shutter-release to visible
+record: **~1.4 s**.
+
+ASR is Whisper small int8 through sherpa-onnx, replacing Vosk (which remains as a fallback).
+Verified against reference WAVs with known transcripts: word-perfect, 852 ms load, ~4.5×
+faster than real time. sherpa-onnx is *not* on Maven Central — k2-fsa ship prebuilt AARs on
+GitHub releases; `scripts/fetch-sherpa.sh` retrieves it and the AAR is gitignored.
+
+OCR was removed from the capture path, then reinstated as an **isolated background channel**.
+It runs in enrichment, lands in `RecordEntity.ocrText`, and is deliberately NOT fed to the
+extraction prompt or the embedding. It exists for future features.
+
+LiteRT-LM is now the primary LLM engine with MediaPipe as fallback, and extraction uses
+constrained decoding (`ResponseFormat.json`, which requires the *Conversation* API and
+`enableResponseFormat = true` — the Session API will not accept it).
+
+**Hard-won facts**
+
+**NPU is a property of the model file, not the chip.** `Backend.NPU()` fails with
+`Model requires one of [cpu,gpu] but Main backend is NPU`. The generic `.litertlm` is not an
+NPU build. Google publishes per-SoC AOT artefacts — `gemma-3n-E2B-it-int4.mediatek.mt6993.litertlm`
+exists; nothing for Qualcomm. The Qualcomm route is Gemma 4 E4B via **Genie/QAIRT 2.45.0**,
+whose bundle is public (5 GB zip, 7.1 GB extracted, includes `vision_encoder.bin`) but ships
+**no runtime libraries** — those need the QAIRT SDK via Qualcomm Package Manager, plus a JNI
+bridge over Genie's C API. `genie-t2t-run` in that SDK can validate the NPU from adb before any
+code is written. Gemma 4 **E2B has no Qualcomm chipset assets at all**, so E4B is the only
+option there.
+
+**LiteRT-LM is 3× faster than MediaPipe on the identical model and backend** — 16.4 s vs
+45–50 s — because MediaPipe emits `<end_of_turn>` as literal text and regenerates the answer
+about ten times. LiteRT-LM applies Gemma's chat template.
+
+**litertlm-android 0.17.0 carries Kotlin 2.4.0 metadata** and KSP (needed by Room) tops out at
+2.3.11, so Kotlin cannot be bumped to match. Pinning the transitives down fails because
+litertlm's own classes carry the metadata. `-Xskip-metadata-version-check` on the existing
+2.0.21 toolchain works and avoids a migration.
+
+**Removing ML Kit did not free the manifest guard.** The `tools:node="remove"` lines are still
+load-bearing: `transport-backend-cct` now arrives via `mediapipe:tasks-text`, the embedder.
+Tested by deleting them — `assertNoNetworkPermission` failed. Moving embeddings to LiteRT-LM's
+`EmbeddingEngine` should finally free it.
+
+**A greedy `sed 's/^.*: /  /'` in a logcat filter destroys JSON.** It strips through the *last*
+`": "`, so `"actions": [` becomes `[`. This produced a false diagnosis of "malformed model
+output" that was entirely a filter artefact. `verify-on-device.sh` still contains this sed —
+use `adb logcat -v raw` when reading structured output.
+
+**Bugs found and fixed, none of which a green build would have caught**
+
+- Escaped JSON lost entire records. The model returned single-line `\n`/`\"`-escaped JSON;
+  `repairJson` had no unescape step, so both attempts failed and the capture fell back to raw
+  text — discarding a correct title, summary, two people and an amount. Fixed with a
+  parse-first unescape fallback.
+- The six-key schema prompt suppressed `actions` entirely. Reordered actions-first with an
+  explicit required-keys instruction; E4B went to 2/2, the smaller models 0 → 1.
+- Due dates were confabulated: "by Friday" became a Wednesday, and an action with no stated
+  deadline was given one. `DueDateResolver` now derives dates with `java.time` and returns null
+  when the transcript carries no temporal expression. English only so far.
+- Audio was clipped at both ends — the mic opened only after the camera finished, and closed
+  the instant the finger lifted. Now concurrent with the camera, plus a 700 ms trailing pad.
+- `SelfTest`'s `--es backend` / `--ez reset_backend` extras were inert, and `LlmHolder` returned
+  a cached engine even when a backend was forced.
+- Records stranded in `RUNNING` were never retried; `drain()` now resets them.
+
+**Known-open**
+
+- `Ocr.read()` keeps whichever recognizer returned *more* characters. On a Latin-only photo the
+  Devanagari model hallucinated more and won, yielding a Bengali zero and stray glyphs. Needs
+  script detection or confidence, tested against real bilingual paper.
+- No UI loader for `PENDING` records — "still enriching" and "produced nothing" look identical.
+- Everything after the phones were disconnected is unverified on hardware: the LiteRT-LM engine
+  swap, the date resolver, the audio-window fix, and the entire screen-capture bubble.
