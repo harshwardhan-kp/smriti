@@ -18,14 +18,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,10 +44,13 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -59,7 +67,9 @@ import com.smriti.app.ui.components.BracketLabelLive
 import com.smriti.app.ui.components.ChipKind
 import com.smriti.app.ui.components.DisplayHeading
 import com.smriti.app.ui.components.HairlineRule
+import com.smriti.app.ui.components.NodeSquare
 import com.smriti.app.ui.components.SectionLabel
+import com.smriti.app.ui.components.SmritiButton
 import com.smriti.app.ui.components.SmritiChip
 import com.smriti.app.ui.theme.S
 import com.smriti.app.ui.theme.SmritiType
@@ -115,25 +125,94 @@ fun TimelineScreen(
     val records by vm.records.collectAsState()
     val tasks by vm.tasks.collectAsState()
     val openTasks = remember(tasks) { tasks.filter { !it.done } }
+    val selection by vm.selection.collectAsState()
+    val inSelectionMode = selection.isNotEmpty()
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = inSelectionMode) { vm.clearSelection() }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = {
+                Text(
+                    text = "delete ${selection.size} ${if (selection.size == 1) "memory" else "memories"}?",
+                    style = SmritiType.Title,
+                    color = S.Ink
+                )
+            },
+            text = {
+                Text(
+                    text = "the photo, the transcript and any tasks go with it. this cannot be undone.",
+                    style = SmritiType.Body,
+                    color = S.Muted
+                )
+            },
+            confirmButton = {
+                SmritiButton(
+                    label = "delete",
+                    primary = true,
+                    onClick = {
+                        vm.deleteSelected()
+                        showDeleteDialog = false
+                    }
+                )
+            },
+            dismissButton = {
+                SmritiButton(
+                    label = "keep",
+                    onClick = { showDeleteDialog = false }
+                )
+            },
+            shape = S.r6,
+            containerColor = S.Paper,
+            tonalElevation = 0.dp
+        )
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    DisplayHeading(
-                        text = "timeline",
-                        italicWord = "time",
-                        style = SmritiType.DisplaySmall,
-                        color = S.Ink
-                    )
+                    if (inSelectionMode) {
+                        BracketLabelLive("${selection.size} selected")
+                    } else {
+                        DisplayHeading(
+                            text = "timeline",
+                            italicWord = "time",
+                            style = SmritiType.DisplaySmall,
+                            color = S.Ink
+                        )
+                    }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = S.Ink
-                        )
+                    if (inSelectionMode) {
+                        IconButton(onClick = { vm.clearSelection() }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Exit selection",
+                                tint = S.Ink
+                            )
+                        }
+                    } else {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = S.Ink
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    if (inSelectionMode) {
+                        IconButton(onClick = { showDeleteDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete selected",
+                                tint = S.Red
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -194,10 +273,10 @@ fun TimelineScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(top = S.lg, bottom = S.md)
+                                    modifier = Modifier.padding(top = S.lg)
                                 ) {
                                     SectionLabel("open tasks")
-                                    Spacer(modifier = Modifier.height(S.sm))
+                                    Spacer(modifier = Modifier.height(S.gutter))
                                     HairlineRule()
                                 }
                             }
@@ -222,10 +301,10 @@ fun TimelineScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(top = S.lg, bottom = S.md)
+                                    modifier = Modifier.padding(top = S.lg)
                                 ) {
                                     SectionLabel("memories")
-                                    Spacer(modifier = Modifier.height(S.sm))
+                                    Spacer(modifier = Modifier.height(S.gutter))
                                     HairlineRule()
                                 }
                             }
@@ -234,7 +313,10 @@ fun TimelineScreen(
                         items(records, key = { "record-${it.id}" }) { record ->
                             RecordCard(
                                 record = record,
-                                onClick = { onOpenRecord(record.id) }
+                                selected = selection.contains(record.id),
+                                selectionMode = inSelectionMode,
+                                onClick = { if (inSelectionMode) vm.toggleSelection(record.id) else onOpenRecord(record.id) },
+                                onLongClick = { vm.startSelection(record.id) }
                             )
                         }
                     }
@@ -253,7 +335,7 @@ private fun TaskRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = S.sm),
+                .padding(vertical = S.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Checkbox(
@@ -288,11 +370,14 @@ private fun TaskRow(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun RecordCard(
     record: RecordEntity,
-    onClick: () -> Unit
+    selected: Boolean,
+    selectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val thumbnailBitmap: ImageBitmap? = remember(record.photoPath) {
         try {
@@ -312,11 +397,13 @@ private fun RecordCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = S.gutter)
+            .background(if (selected) S.RedTint.copy(alpha = 0.10f) else Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = S.gutter),
             horizontalArrangement = Arrangement.spacedBy(S.gutter),
             verticalAlignment = Alignment.Top
         ) {
@@ -408,6 +495,11 @@ private fun RecordCard(
                         }
                     }
                 }
+            }
+
+            if (selectionMode) {
+                Spacer(modifier = Modifier.width(S.md))
+                if (selected) NodeSquare(size = 10.dp) else Box(Modifier.size(10.dp))
             }
         }
 

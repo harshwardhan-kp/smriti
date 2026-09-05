@@ -80,4 +80,13 @@ interface RecordDao {
 
     @Query("SELECT COUNT(*) FROM records WHERE enrichmentState = 'PENDING'")
     suspend fun pendingCount(): Int
+
+    @Query("SELECT photoPath FROM records WHERE id IN (:ids)")
+    suspend fun photoPathsFor(ids: List<Long>): List<String>
+
+    @Query("DELETE FROM tasks WHERE recordId IN (:ids)")
+    suspend fun deleteTasksForRecords(ids: List<Long>)
+
+    @Query("DELETE FROM records WHERE id IN (:ids)")
+    suspend fun deleteRecords(ids: List<Long>)
 }
