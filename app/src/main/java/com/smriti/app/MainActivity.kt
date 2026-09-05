@@ -41,6 +41,8 @@ import com.smriti.app.ui.DetailScreen
 import com.smriti.app.ui.TimelineScreen
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.smriti.app.ai.NpuProbe
+import com.smriti.app.capture.AsrSelfTest
 import com.smriti.app.ui.theme.SmritiTheme
 
 class MainActivity : ComponentActivity() {
@@ -66,6 +68,14 @@ class MainActivity : ComponentActivity() {
                 backend = intent.getStringExtra("backend"),
                 resetPolicy = intent.getBooleanExtra("reset_backend", false)
             )
+        }
+
+        if (intent?.getBooleanExtra(NpuProbe.EXTRA, false) == true) {
+            NpuProbe.run(this, lifecycleScope)
+        }
+
+        if (intent?.getBooleanExtra(AsrSelfTest.EXTRA, false) == true) {
+            AsrSelfTest.run(this, lifecycleScope)
         }
         setContent {
             SmritiTheme {

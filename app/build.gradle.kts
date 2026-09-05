@@ -80,6 +80,10 @@ android {
     }
     kotlinOptions {
         jvmTarget = "21"
+        // litertlm-android 0.17.0 ships Kotlin 2.4.0 metadata. KSP (required by Room)
+        // tops out at 2.3.11, so Kotlin cannot be bumped to 2.4 here. This tells the
+        // 2.0.21 compiler to read the newer metadata anyway.
+        freeCompilerArgs += "-Xskip-metadata-version-check"
     }
     buildFeatures {
         compose = true
@@ -117,14 +121,15 @@ dependencies {
 
     implementation("com.google.mediapipe:tasks-genai:0.10.35")
 
+    // SPIKE: LiteRT-LM exposes Backend.NPU(); MediaPipe's Java enum is CPU|GPU only.
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.17.0")
+
     val cameraxVersion = "1.4.1"
     implementation("androidx.camera:camera-core:$cameraxVersion")
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
 
-    implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
 
     implementation("com.google.code.gson:gson:2.11.0")
 
@@ -133,6 +138,7 @@ dependencies {
 
     // Vosk provides fully offline speech recognition and requires no NDK build.
     implementation("com.alphacephei:vosk-android:0.3.75")
+    implementation(files("libs/sherpa-onnx-1.13.7.aar"))
 
     testImplementation("junit:junit:4.13.2")
 }
