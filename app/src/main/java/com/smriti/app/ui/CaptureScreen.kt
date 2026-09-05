@@ -27,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -38,8 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.smriti.app.capture.CaptureStage
 import com.smriti.app.ui.components.BracketLabel
@@ -54,6 +58,20 @@ fun CaptureScreen(
     onRecordSaved: (Long) -> Unit,
     vm: CaptureViewModel = viewModel()
 ) {
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        DisposableEffect(Unit) {
+            val window = (view.context as? android.app.Activity)?.window
+            val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+            controller?.isAppearanceLightStatusBars = false
+            controller?.isAppearanceLightNavigationBars = false
+            onDispose {
+                controller?.isAppearanceLightStatusBars = true
+                controller?.isAppearanceLightNavigationBars = true
+            }
+        }
+    }
+
     val lifecycleOwner = LocalLifecycleOwner.current
     val stage by vm.stage.collectAsState()
     var isShutterHeld by remember { mutableStateOf(false) }
@@ -166,11 +184,17 @@ fun CaptureScreen(
                 text = when {
                     isMicHeld -> "listening — voice only, release to stop"
                     isShutterHeld -> "listening — release to stop"
-                    else -> "tap for a photo · hold to add voice · hold the mic for voice only"
+                    // 40 characters. Measured on a 384dp screen: the pill has 332dp of usable
+                    // width and Geist Mono at 12sp advances 7.2dp per character, so 46 is the
+                    // ceiling. The previous 49-character version wrapped and left "only"
+                    // orphaned on a line of its own.
+                    else -> "tap photo · hold photo+voice · mic voice"
                 },
                 color = if (isListeningHint) S.Red else S.OnDark.copy(alpha = 0.65f),
                 style = if (isListeningHint) SmritiType.MetaMedium else SmritiType.Meta,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
+                    .padding(horizontal = S.gutter)
                     .background(S.InkDeep.copy(alpha = 0.6f), S.r6)
                     .padding(horizontal = S.md, vertical = S.xs)
             )

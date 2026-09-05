@@ -505,14 +505,12 @@ fun DetailScreen(
                     Spacer(modifier = Modifier.height(S.gutter))
                 }
 
-                Row(
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(S.md),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(S.xs)
                 ) {
                     BracketLabel(formatRelativeTime(currentRecord.createdAt))
-                    currentRecord.enrichmentModel?.let { model ->
-                        BracketLabel(model)
-                    }
+                    currentRecord.enrichmentModel?.let { BracketLabel(it) }
                 }
                 Spacer(modifier = Modifier.height(S.sm))
 

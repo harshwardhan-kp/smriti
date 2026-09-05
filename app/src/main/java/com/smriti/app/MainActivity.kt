@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -159,46 +158,44 @@ class MainActivity : ComponentActivity() {
 fun SmritiApp() {
     PermissionGate {
         val navController = rememberNavController()
-        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-            NavHost(
-                navController = navController,
-                // Capture is the app. The timeline is where you go afterwards.
-                startDestination = "capture",
-                modifier = Modifier.padding(innerPadding)
-            ) {
-                composable("capture") {
-                    CaptureScreen(
-                        onOpenTimeline = { navController.navigate("timeline") },
-                        onOpenAsk = { navController.navigate("ask") },
-                        onRecordSaved = { id -> navController.navigate("detail/$id") }
-                    )
-                }
-                composable("timeline") {
-                    TimelineScreen(
-                        onBack = { navController.popBackStack() },
-                        onOpenRecord = { id -> navController.navigate("detail/$id") }
-                    )
-                }
-                composable(
-                    route = "detail/{id}",
-                    arguments = listOf(
-                        navArgument("id") {
-                            type = NavType.LongType
-                        }
-                    )
-                ) { backStackEntry ->
-                    val recordId = backStackEntry.arguments?.getLong("id") ?: 0L
-                    DetailScreen(
-                        recordId = recordId,
-                        onBack = { navController.popBackStack() }
-                    )
-                }
-                composable("ask") {
-                    AskScreen(
-                        onBack = { navController.popBackStack() },
-                        onOpenRecord = { id -> navController.navigate("detail/$id") }
-                    )
-                }
+        NavHost(
+            navController = navController,
+            // Capture is the app. The timeline is where you go afterwards.
+            startDestination = "capture",
+            modifier = Modifier.fillMaxSize()
+        ) {
+            composable("capture") {
+                CaptureScreen(
+                    onOpenTimeline = { navController.navigate("timeline") },
+                    onOpenAsk = { navController.navigate("ask") },
+                    onRecordSaved = { id -> navController.navigate("detail/$id") }
+                )
+            }
+            composable("timeline") {
+                TimelineScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenRecord = { id -> navController.navigate("detail/$id") }
+                )
+            }
+            composable(
+                route = "detail/{id}",
+                arguments = listOf(
+                    navArgument("id") {
+                        type = NavType.LongType
+                    }
+                )
+            ) { backStackEntry ->
+                val recordId = backStackEntry.arguments?.getLong("id") ?: 0L
+                DetailScreen(
+                    recordId = recordId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable("ask") {
+                AskScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenRecord = { id -> navController.navigate("detail/$id") }
+                )
             }
         }
     }
