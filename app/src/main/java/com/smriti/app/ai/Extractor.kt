@@ -138,37 +138,116 @@ class Extractor(private val backend: LlmBackend? = null) {
     }
 
     internal fun repairJson(raw: String): String {
-        var text = raw.trim()
+        val text = raw.trim()
         if (text.isEmpty()) return ""
 
         val firstBrace = text.indexOf('{')
+        if (firstBrace == -1) return ""
         val lastBrace = text.lastIndexOf('}')
-        if (firstBrace == -1 || lastBrace == -1 || firstBrace > lastBrace) {
-            return ""
+
+        // A reply that stopped early has no closing brace at all. Take what there is and let
+        // balanceBrackets close it, rather than discarding a response that is mostly present.
+        val jsonSlice = if (lastBrace > firstBrace) {
+            text.substring(firstBrace, lastBrace + 1)
+        } else {
+            text.substring(firstBrace)
         }
 
-        var jsonSlice = text.substring(firstBrace, lastBrace + 1)
-        while (jsonSlice.contains(Regex(",\\s*([}\\]])"))) {
-            jsonSlice = jsonSlice.replace(Regex(",\\s*([}\\]])"), "$1")
+        // Each repair is tried only after the plainer ones have genuinely failed to parse, and
+        // the first candidate that parses wins. Two orderings matter here.
+        //
+        // Unescaping must not run on anything that already parses: a blind replace of \" with "
+        // would corrupt legitimately escaped quotes, and {"title": "He said \"hi\""} is valid
+        // JSON today that must keep parsing to: He said "hi".
+        //
+        // Balancing must not run first either. It walks the text tracking whether it is inside a
+        // string, and a wholly backslash-escaped reply defeats that walk -- every \" reads as an
+        // escaped quote, the scanner never leaves the string, and it appends a stray quote at the
+        // end. Balancing a slice that already parses can only do harm, so it goes last.
+        val candidates = listOf(
+            jsonSlice,
+            unescapeSlice(jsonSlice),
+            balanceBrackets(jsonSlice),
+            balanceBrackets(unescapeSlice(jsonSlice))
+        )
+
+        for (candidate in candidates) {
+            val cleaned = stripTrailingCommas(candidate)
+            try {
+                com.google.gson.JsonParser.parseString(cleaned)
+                return cleaned
+            } catch (e: Exception) {
+                // Try the next repair.
+            }
         }
-        // Unescape fallback (parse-first). WHY parse-first is mandatory: a blind global
-        // replace of \" with " would corrupt legitimately escaped quotes inside string
-        // values — e.g. {"title": "He said \"hi\""} is valid JSON today and must keep
-        // parsing to the title He said "hi" — so the unescape below may only ever run
-        // as a fallback after a genuine parse failure.
-        try {
-            com.google.gson.JsonParser.parseString(jsonSlice)
-            return jsonSlice
-        } catch (e: Exception) {
-            // Genuine parse failure; try the unescaped candidate below.
+        return stripTrailingCommas(jsonSlice)
+    }
+
+    private fun stripTrailingCommas(json: String): String {
+        var out = json
+        while (out.contains(Regex(",\\s*([}\\]])"))) {
+            out = out.replace(Regex(",\\s*([}\\]])"), "$1")
         }
-        val candidate = unescapeSlice(jsonSlice)
-        try {
-            com.google.gson.JsonParser.parseString(candidate)
-            return candidate
-        } catch (e: Exception) {
-            return jsonSlice
+        return out
+    }
+
+    /**
+     * Closes brackets the model left open, and repairs closers that arrive in the wrong order.
+     *
+     * Gemma 4 E4B on the NPU produced this, and it is one character from being valid:
+     *
+     *     ..."amounts":[{"value":0,"currency":"INR","label":""],"tags":[]}
+     *
+     * The `]` closes the amounts array while the object inside it is still open. Gson rejects
+     * the whole reply, both extraction attempts fail, and a capture that was correctly
+     * understood is thrown away over a missing `}`. The same walk also closes a reply that
+     * simply stopped early.
+     *
+     * Nothing is inserted that changes the meaning of well-formed JSON: for balanced input the
+     * stack empties exactly and the output is the input.
+     */
+    private fun balanceBrackets(slice: String): String {
+        val out = StringBuilder(slice.length + 8)
+        val stack = ArrayDeque<Char>()
+        var inString = false
+        var escaped = false
+
+        for (c in slice) {
+            if (inString) {
+                out.append(c)
+                when {
+                    escaped -> escaped = false
+                    c == '\\' -> escaped = true
+                    c == '"' -> inString = false
+                }
+                continue
+            }
+            when (c) {
+                '"' -> { inString = true; out.append(c) }
+                '{', '[' -> { stack.addLast(c); out.append(c) }
+                '}', ']' -> {
+                    val wanted = if (c == '}') '{' else '['
+                    // Close anything still open inside this one, so the closer we were given
+                    // lands against its own opener.
+                    while (stack.isNotEmpty() && stack.last() != wanted) {
+                        out.append(if (stack.removeLast() == '{') '}' else ']')
+                    }
+                    if (stack.isNotEmpty()) {
+                        stack.removeLast()
+                        out.append(c)
+                    }
+                    // A closer with no opener at all is dropped: appending it could only make
+                    // the result less parseable than leaving it out.
+                }
+                else -> out.append(c)
+            }
         }
+
+        if (inString) out.append('"')
+        while (stack.isNotEmpty()) {
+            out.append(if (stack.removeLast() == '{') '}' else ']')
+        }
+        return out.toString()
     }
 
     private fun unescapeSlice(slice: String): String {

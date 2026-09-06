@@ -285,4 +285,51 @@ class ExtractorJsonTest {
         fakeBackend.generate("test prompt")
         assertNull(capturedSchema)
     }
+
+    /**
+     * The exact reply Gemma 4 E4B produced on the Hexagon NPU, byte for byte from logcat.
+     * One `}` short: the amounts array closes while the object inside it is still open.
+     * Before balanceBrackets this returned null twice and the capture fell back to a record
+     * with no actions at all.
+     */
+    @Test
+    fun testNpuMismatchedCloserIsRepaired() {
+        val raw = """{"actions":[{"text":"Ship the API","due":"2026-09-08"}],""" +
+            """"title":"Ship the API","summary":"Ship the API","people":[],""" +
+            """"amounts":[{"value":0,"currency":"INR","label":""],"tags":[]}"""
+        val record = Extractor(null).parseForTest(raw, "Rohit ships the API by Friday")
+        assertNotNull(record)
+        assertEquals(1, record!!.actions.size)
+        assertEquals("Ship the API", record.actions[0].text)
+        assertEquals("Ship the API", record.title)
+    }
+
+    /** A reply that simply stopped early, which the same walk closes. */
+    @Test
+    fun testTruncatedReplyIsClosed() {
+        val raw = """{"actions":[{"text":"Pay Sharma","due":null}],"title":"Pay Sharma"""" + '"'
+        val record = Extractor(null).parseForTest(raw, "Pay Sharma tomorrow")
+        assertNotNull(record)
+        assertEquals("Pay Sharma", record!!.actions[0].text)
+    }
+
+    /** Balancing must be a no-op on well-formed JSON, not a rewrite of it. */
+    @Test
+    fun testWellFormedJsonIsUnchangedByBalancing() {
+        val raw = """{"actions":[],"title":"He said \"hi\"","summary":"","people":[],""" +
+            """"amounts":[{"value":500,"currency":"INR","label":"cash"}],"tags":["a"]}"""
+        val record = Extractor(null).parseForTest(raw, "")
+        assertNotNull(record)
+        assertEquals("He said \"hi\"", record!!.title)
+        assertEquals(0, record.actions.size)
+    }
+
+    /** Brackets inside string values are text, not structure, and must not move the stack. */
+    @Test
+    fun testBracketsInsideStringsAreNotStructure() {
+        val raw = """{"actions":[],"title":"a [b] {c}","summary":"","people":[],"amounts":[],"tags":[]}"""
+        val record = Extractor(null).parseForTest(raw, "")
+        assertNotNull(record)
+        assertEquals("a [b] {c}", record!!.title)
+    }
 }
