@@ -1,0 +1,74 @@
+Add a hardware probe to this Android/Kotlin repo. Edit/create files directly.
+
+GOAL
+Find out whether Gemma 3n E4B runs on the Hexagon NPU of an iQOO 15 (SM8850) via LiteRT-LM,
+and how fast, versus GPU and CPU. This is a SPIKE that must not disturb the existing MediaPipe
+code path. Nothing existing may change behaviour.
+
+CONTEXT ALREADY TRUE — DO NOT REDO
+- app/build.gradle.kts already has:
+      implementation("com.google.ai.edge.litertlm:litertlm-android:0.17.0")
+      freeCompilerArgs += "-Xskip-metadata-version-check"
+  It builds today. Do not modify build.gradle.kts.
+- The model is on the device at:
+      /data/local/tmp/llm/gemma-3n-E4B-it-int4.litertlm
+- ModelProvisioner.locate(context) already returns .litertlm files. Use it; do not hardcode paths.
+
+CREATE: app/src/offline/java/com/smriti/app/ai/NpuProbe.kt
+  object NpuProbe { fun run(context: Context, scope: CoroutineScope) }
+
+BEHAVIOUR
+Log tag "SmritiNPU". For EACH backend in this order — NPU, GPU, CPU — attempt a full
+load-and-generate and log the result, then move to the next:
+
+  1. Backend.NPU(nativeLibraryDir = context.applicationInfo.nativeLibraryDir)
+  2. Backend.GPU()
+  3. Backend.CPU()
+
+For each attempt:
+  a. Log "ATTEMPT <name>" BEFORE constructing anything. THIS IS CRITICAL: a native backend can
+     segfault and take the whole process down with it, exactly as MediaPipe's GPU path does on
+     this device. If the attempt line is not written first, a crash leaves no evidence of which
+     backend was being tried.
+  b. val engine = Engine(EngineConfig(modelPath = <path from ModelProvisioner>, backend = <the backend>))
+     engine.initialize()      // may take ~10 s; already on a background thread
+  c. Time initialize() in ms and log "  init: <n> ms".
+  d. val session = engine.createSession(SessionConfig())
+     val out = session.generateContent(listOf(InputData.Text(PROMPT)))
+     Time it, log "  generate: <n> ms".
+  e. Log the FULL response, one logcat line per line of it:  out.lines().forEach { Log.i(TAG, "  $it") }
+  f. Log "  RESULT <name>: OK" on success.
+  g. Wrap the whole attempt in try/catch(Throwable) and log "  RESULT <name>: FAILED <class>: <message>"
+     then CONTINUE to the next backend. One backend failing must not stop the others.
+  h. Always close the session and the engine (both are AutoCloseable) in a finally block.
+
+PROMPT — use exactly this string, same as SelfTest uses, so results are comparable:
+    Extract the action items from this note and reply with a single JSON object only:
+    "Rohit ships the API by Friday and we need two hundred more units from Sharma Traders."
+
+Finish with a line "=== NPU PROBE END ===".
+Start with "=== NPU PROBE START ===".
+
+WIRE IT UP: app/src/main/java/com/smriti/app/MainActivity.kt
+The activity already handles extras like this:
+    if (intent?.getBooleanExtra(SelfTest.EXTRA, false) == true) { SelfTest.run(...) }
+Add the same pattern for a new extra "smriti_npu" calling NpuProbe.run(this, lifecycleScope).
+PROBLEM YOU MUST SOLVE: NpuProbe.kt lives in the `offline` source set but MainActivity lives in
+`main`, which is shared with the `devcloud` flavor — a direct reference will not compile for
+devcloud. Solve it the way this codebase already solves it for BackendFactory/AsrFactory: put a
+matching object in BOTH source sets with an identical signature, the devcloud one being a no-op
+that just logs that the probe is offline-only. Do not add a dependency from main to offline.
+
+CONSTRAINTS
+- Do NOT modify LlmEngine.kt, BackendPolicy.kt, Extractor.kt, SelfTest.kt, BackendFactory.kt,
+  ModelProvisioner.kt, or any existing behaviour. This is additive only.
+- Do NOT remove the MediaPipe dependency or its code path.
+- Kotlin 2.0.21, coroutines, Dispatchers.IO.
+- API is exactly: Engine(EngineConfig), engine.initialize(), engine.createSession(SessionConfig()),
+  session.generateContent(List<InputData>), InputData.Text(String),
+  Backend.NPU(String), Backend.GPU(), Backend.CPU().
+  EngineConfig's first two params are (modelPath: String, backend: Backend) — use named arguments.
+- Must build BOTH flavors:  ./gradlew assembleOfflineDebug assembleDevcloudDebug
+- The offline flavor must not gain a network permission.
+
+Print a summary of files created/changed.

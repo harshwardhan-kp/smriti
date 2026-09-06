@@ -8,6 +8,6 @@ package com.smriti.app.ai
  */
 interface LlmBackend {
     val label: String
-    suspend fun generate(prompt: String, maxTokens: Int = 512): String
+    suspend fun generate(prompt: String, maxTokens: Int = 512, jsonSchema: String? = null): String
     fun close() {}
 }

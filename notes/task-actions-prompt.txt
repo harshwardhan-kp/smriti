@@ -1,0 +1,44 @@
+Fix a prompt bug in this Android/Kotlin repo. Edit the file directly.
+
+FILE: app/src/main/java/com/smriti/app/ai/Extractor.kt — the buildPrompt() function ONLY.
+
+THE BUG (measured on an iQOO 15, Qwen2.5-1.5B q8, 2026-09-05, on-device)
+buildPrompt asks for a six-key schema:
+    {"title","summary","people","amounts","tags","actions"}
+Given "Rohit ships the API by Friday and we need two hundred more units from Sharma Traders",
+the model returned title, summary, people and amounts CORRECTLY — and silently OMITTED both
+"actions" and "tags" from its response. Not empty arrays: the keys were absent entirely.
+
+The SAME model, SAME sentence, asked with a short focused prompt ("Extract the action items
+from this note and reply with a single JSON object only") returned BOTH action items correctly.
+
+So the six-key demand is causing a small model to drop keys, and the key it drops is the one
+the entire product is built on: the app exists to answer "what did I commit to?".
+
+REQUIRED CHANGE — buildPrompt() only
+Rewrite the prompt so a 1-4B model reliably emits `actions`. Apply all of:
+  1. Put "actions" FIRST in the stated schema, before title/summary. Models attend most
+     reliably to what comes first.
+  2. State explicitly that EVERY key is required and that empty ones must be present as []
+     or "" — never omitted.
+  3. Include ONE short worked example: a one-line input and its correct JSON output, showing
+     a populated `actions` array with a `text` and a `due`. Keep it tiny; it costs tokens on
+     every single capture.
+  4. Keep the prompt SHORT. It runs on-device for every capture and long prompts cost seconds.
+
+MUST NOT CHANGE
+- The exact key names in the schema: title, summary, people, amounts, tags, actions; and
+  inside actions: text, due. parseJson's aliases depend on these.
+- The `Today's date is $today` line — due-date inference needs it.
+- The transcript truncation `transcript.take(1500)` and the OCR section's `.take(1500)`.
+- The `includeOcr` parameter, the `--- TRANSCRIPT ---` / `--- OCR TEXT ---` section markers,
+  or the function signature.
+- Anything outside buildPrompt: not parseJson, not repairJson, not the retry flow, not the
+  SmritiExtract debug logging, not the unescape fallback.
+
+Keep the existing KDoc/comments and add a brief comment recording WHY the schema is ordered
+actions-first, citing the 2026-09-05 measurement above.
+
+Must compile and keep tests green:  ./gradlew assembleOfflineDebug testOfflineDebugUnitTest
+
+Print the new prompt text and a one-paragraph rationale.

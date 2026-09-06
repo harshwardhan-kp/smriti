@@ -1,0 +1,54 @@
+Fix a data-loss bug in this Android/Kotlin repo. Edit files directly.
+
+THE BUG (measured on an iQOO 15, Qwen2.5-1.5B q8, 2026-09-05)
+The model returned its answer as SINGLE-LINE, BACKSLASH-ESCAPED JSON — literal two-character
+sequences \n and \" rather than real newlines and quotes:
+
+```json\n{\n  \"title\": \"Action Items for Delivery\",\n  \"summary\": \"Sharma Traders needs two hundred more API units by Friday.\",\n  \"people\": ["Rohit", "Sharma Traders"],\n  \"amounts\": [{\"value\": 200, \"currency\": \"INR\", \"label\": \"Units\"}]\n}\n```
+
+Note the mixed escaping: "people" has UNESCAPED quotes while every other key is escaped.
+
+repair_json / repairJson slice brace-to-brace and strip trailing commas, but never unescape.
+JSON parsing therefore throws, parseJson returns null, BOTH extraction attempts fail, and the
+capture falls back to raw text — losing a title, a summary, two people and an amount that the
+model had produced correctly. This is total data loss on a good model response.
+
+FILES — repair.py IS THE AUTHORITATIVE SPEC
+tools/repair.py says: "This file is the AUTHORITATIVE specification. The Kotlin code in
+app/.../Extractor.kt must produce identical behaviour for every input."
+So change BOTH, and they must behave identically:
+  1. tools/repair.py          -> repair_json()
+  2. app/src/main/java/com/smriti/app/ai/Extractor.kt -> repairJson()
+
+REQUIRED BEHAVIOUR
+After the existing brace-slice and trailing-comma cleanup, add an unescape FALLBACK:
+
+  - FIRST try to parse the slice exactly as it is today. If that succeeds, return it UNCHANGED.
+  - ONLY if that parse fails, produce a second candidate by unescaping the slice:
+        \\n -> newline, \\t -> tab, \\r -> carriage return, \\" -> ", \\\\ -> \\
+    then try to parse that. If it parses, use it. If it does not, fall back to today's
+    behaviour (return the slice, so the caller still gets null).
+
+CRITICAL — WHY PARSE-FIRST IS MANDATORY, DO NOT SKIP IT
+A blind global replace of \\" with " would CORRUPT legitimately escaped quotes inside string
+values. For example {"title": "He said \\"hi\\""} is VALID JSON today and must keep parsing
+to the title: He said "hi". Unescaping it unconditionally would break it. So the unescape MUST
+only ever run as a fallback after a genuine parse failure. Add a test proving this case still
+works.
+
+TESTS (add, do not modify existing ones)
+- app/src/test/java/... : add JUnit tests to the existing Extractor test class
+    a) the exact escaped string above parses and yields title "Action Items for Delivery",
+       summary non-blank, people == ["Rohit", "Sharma Traders"]
+    b) {"title": "He said \\"hi\\""} still yields title: He said "hi"
+    c) an already-valid unescaped object is returned unchanged and still parses
+- tools/repair.py: if it has a __main__ self-check or doctests, extend them to match.
+
+CONSTRAINTS
+- Do NOT change parseJson's alias lists, buildPrompt, the retry flow, or StructuredRecord.
+- Do NOT remove the SmritiExtract debug logging that is already in Extractor.kt.
+- Keep every existing comment and KDoc. Add a comment explaining WHY parse-first matters.
+- Kotlin 2.0.21, Gson. Python 3, standard library only.
+- Must pass: ./gradlew assembleOfflineDebug testOfflineDebugUnitTest
+
+Print a summary of each file changed and why.

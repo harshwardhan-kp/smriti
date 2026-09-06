@@ -5,6 +5,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,13 +19,15 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,19 +38,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.smriti.app.capture.BubbleLauncher
 import com.smriti.app.capture.CaptureStage
-
-private val ColorAmber = Color(0xFFF2B705)
-private val ColorInk = Color(0xFF0B0B0B)
-private val ColorCream = Color(0xFFFBF8F1)
-private val ColorRedAlert = Color(0xFFE53935)
+import com.smriti.app.ui.components.BracketLabel
+import com.smriti.app.ui.components.BracketLabelLive
+import com.smriti.app.ui.theme.S
+import com.smriti.app.ui.theme.SmritiType
 
 @Composable
 fun CaptureScreen(
@@ -56,9 +62,39 @@ fun CaptureScreen(
     onRecordSaved: (Long) -> Unit,
     vm: CaptureViewModel = viewModel()
 ) {
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        DisposableEffect(Unit) {
+            val window = (view.context as? android.app.Activity)?.window
+            val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+            controller?.isAppearanceLightStatusBars = false
+            controller?.isAppearanceLightNavigationBars = false
+            onDispose {
+                controller?.isAppearanceLightStatusBars = true
+                controller?.isAppearanceLightNavigationBars = true
+            }
+        }
+    }
+
     val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
     val stage by vm.stage.collectAsState()
-    var isLongPressed by remember { mutableStateOf(false) }
+    var isShutterHeld by remember { mutableStateOf(false) }
+    var isMicHeld by remember { mutableStateOf(false) }
+    var isVoiceOnlyCapture by remember { mutableStateOf(false) }
+    var bubbleOn by remember { mutableStateOf(BubbleLauncher.isRunning()) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                bubbleOn = BubbleLauncher.isRunning()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LaunchedEffect(stage) {
         val currentStage = stage
@@ -69,14 +105,17 @@ fun CaptureScreen(
             vm.consumeTerminalStage()
             onRecordSaved(currentStage.recordId)
         }
+        if (currentStage is CaptureStage.Done || currentStage is CaptureStage.Failed) {
+            isVoiceOnlyCapture = false
+        }
     }
 
-    val isListening = isLongPressed || stage is CaptureStage.Listening
+    val isShutterListening = isShutterHeld || (!isVoiceOnlyCapture && stage is CaptureStage.Listening)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ColorInk)
+            .background(S.InkDeep)
     ) {
         AndroidView(
             factory = { ctx ->
@@ -92,54 +131,79 @@ fun CaptureScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        Row(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = S.gutter)
+                .padding(top = S.md),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            TextButton(onClick = onOpenAsk) {
-                Text(
-                    text = "Ask",
-                    color = ColorCream,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-            }
-
-            Surface(
-                shape = RoundedCornerShape(percent = 50),
-                color = ColorInk.copy(alpha = 0.75f),
-                border = BorderStroke(1.dp, ColorAmber.copy(alpha = 0.6f))
+            // the floating pill
+            Row(
+                modifier = Modifier
+                    .background(S.Paper.copy(alpha = 0.82f), S.r24)
+                    .padding(horizontal = S.gutter, vertical = S.md),
+                horizontalArrangement = Arrangement.spacedBy(S.gutter),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "OFFLINE · ON-DEVICE",
-                    color = ColorAmber,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                // Inside the pill, red means "this is on" and nothing else. Elsewhere in the
+                // app a BracketLabel wears red brackets over a quiet label, but a nav bar reads
+                // as a set: if every item carries the accent then the one item that is actually
+                // active has no way left to say so. These two are destinations, never a state,
+                // so they stay ink.
+                BracketLabel(
+                    text = "ask",
+                    labelColor = S.Ink,
+                    bracketColor = S.Ink,
+                    modifier = Modifier.clickable { onOpenAsk() }
+                )
+
+                BracketLabel(
+                    text = "timeline",
+                    labelColor = S.Ink,
+                    bracketColor = S.Ink,
+                    modifier = Modifier.clickable { onOpenTimeline() }
+                )
+
+                BracketLabel(
+                    text = if (bubbleOn) "bubble on" else "bubble off",
+                    labelColor = if (bubbleOn) S.Red else S.Muted,
+                    bracketColor = if (bubbleOn) S.Red else S.Muted,
+                    modifier = Modifier.clickable {
+                        bubbleOn = if (bubbleOn) {
+                            BubbleLauncher.stop(context)
+                            false
+                        } else {
+                            BubbleLauncher.start(context)
+                        }
+                    }
                 )
             }
 
-            TextButton(onClick = onOpenTimeline) {
-                Text(
-                    text = "Timeline",
-                    color = ColorCream,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+            Spacer(modifier = Modifier.height(S.md))
+
+            // the build badge, on its own, below the pill
+            Box(
+                modifier = Modifier
+                    .background(S.InkDeep.copy(alpha = 0.55f), S.r6)
+                    .padding(horizontal = S.md, vertical = S.xs)
+            ) {
+                BracketLabel(
+                    text = BuildBadge.label,
+                    labelColor = S.OnDark.copy(alpha = 0.75f),
+                    bracketColor = S.Red
                 )
             }
         }
 
         stage?.let { currentStage ->
             val statusText = when (currentStage) {
-                is CaptureStage.Photo -> "Capturing"
-                is CaptureStage.Reading -> "Reading the image"
-                is CaptureStage.Listening -> "Listening"
-                is CaptureStage.Thinking -> "Understanding, on this phone"
-                is CaptureStage.Done -> "Saved"
+                is CaptureStage.Photo -> "capturing"
+                is CaptureStage.Reading -> "reading the image"
+                is CaptureStage.Listening -> "listening"
+                is CaptureStage.Thinking -> "understanding, on this phone"
+                is CaptureStage.Done -> "saved"
                 is CaptureStage.Failed -> currentStage.reason
             }
             val isFailed = currentStage is CaptureStage.Failed
@@ -148,18 +212,15 @@ fun CaptureScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 64.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = ColorInk.copy(alpha = 0.85f),
-                border = BorderStroke(1.dp, if (isFailed) ColorRedAlert else ColorAmber.copy(alpha = 0.5f))
+                    .padding(top = 128.dp),
+                shape = S.r6,
+                color = S.InkDeep.copy(alpha = 0.75f),
+                border = BorderStroke(S.hairlineWidth, if (isFailed) S.Red else S.HairlineOnDark)
             ) {
-                Text(
+                BracketLabelLive(
                     text = statusText,
-                    color = if (isFailed) ColorRedAlert else ColorCream,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    textAlign = TextAlign.Center
+                    color = if (isFailed) S.Red else S.OnDark,
+                    modifier = Modifier.padding(horizontal = S.gutter, vertical = S.sm)
                 )
             }
         }
@@ -168,60 +229,118 @@ fun CaptureScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 36.dp),
+                .padding(bottom = S.xl),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            val isListeningHint = isMicHeld || isShutterHeld
             Text(
-                text = if (isListening) {
-                    "LISTENING — release to stop"
-                } else {
-                    "Tap for a photo · Hold to add your voice"
+                text = when {
+                    isMicHeld -> "listening — voice only, release to stop"
+                    isShutterHeld -> "listening — release to stop"
+                    // 40 characters. Measured on a 384dp screen: the pill has 332dp of usable
+                    // width and Geist Mono at 12sp advances 7.2dp per character, so 46 is the
+                    // ceiling. The previous 49-character version wrapped and left "only"
+                    // orphaned on a line of its own.
+                    else -> "tap photo · hold photo+voice · mic voice"
                 },
-                color = if (isListening) ColorRedAlert else ColorCream,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (isListening) FontWeight.Bold else FontWeight.Normal,
+                color = if (isListeningHint) S.Red else S.OnDark.copy(alpha = 0.65f),
+                style = if (isListeningHint) SmritiType.MetaMedium else SmritiType.Meta,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .background(ColorInk.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .padding(horizontal = S.gutter)
+                    .background(S.InkDeep.copy(alpha = 0.6f), S.r6)
+                    .padding(horizontal = S.md, vertical = S.xs)
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(S.gutter))
 
-            Box(
-                modifier = Modifier
-                    .size(84.dp)
-                    .then(
-                        if (isListening) {
-                            Modifier.border(4.dp, ColorRedAlert, CircleShape)
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .padding(if (isListening) 6.dp else 0.dp)
-                    .background(ColorAmber, CircleShape)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                try {
-                                    tryAwaitRelease()
-                                } finally {
-                                    // Releasing the button must END the recording. Without this
-                                    // the recorder runs to its 15 s timeout and the user waits
-                                    // for nothing after they have stopped speaking.
-                                    if (isLongPressed) vm.stopVoice()
-                                    isLongPressed = false
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(S.lg, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .border(
+                            width = if (isMicHeld) 4.dp else 2.dp,
+                            color = if (isMicHeld) S.Red else S.OnDark.copy(alpha = 0.7f),
+                            shape = CircleShape
+                        )
+                        .background(
+                            color = if (isMicHeld) S.RedTint else Color.Transparent,
+                            shape = CircleShape
+                        )
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onPress = {
+                                    try {
+                                        tryAwaitRelease()
+                                    } finally {
+                                        if (isMicHeld) vm.stopVoice()
+                                        isMicHeld = false
+                                    }
+                                },
+                                onLongPress = {
+                                    isMicHeld = true
+                                    isVoiceOnlyCapture = true
+                                    vm.captureVoiceOnly()
                                 }
-                            },
-                            onTap = {
-                                vm.capture(false)
-                            },
-                            onLongPress = {
-                                isLongPressed = true
-                                vm.capture(true)
+                            )
+                        }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Record voice only",
+                        tint = if (isMicHeld) S.Red else S.OnDark
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(84.dp)
+                        .then(
+                            if (isShutterListening) {
+                                Modifier.border(4.dp, S.Red, CircleShape)
+                            } else {
+                                Modifier
                             }
                         )
-                    }
-            )
+                        .padding(if (isShutterListening) 6.dp else 0.dp)
+                        .background(S.White, CircleShape)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onPress = {
+                                    try {
+                                        tryAwaitRelease()
+                                    } finally {
+                                        // Releasing the button must END the recording. Without this
+                                        // the recorder runs to its 15 s timeout and the user waits
+                                        // for nothing after they have stopped speaking.
+                                        if (isShutterHeld) vm.stopVoice()
+                                        isShutterHeld = false
+                                    }
+                                },
+                                onTap = {
+                                    isVoiceOnlyCapture = false
+                                    vm.capture(false)
+                                },
+                                onLongPress = {
+                                    isShutterHeld = true
+                                    isVoiceOnlyCapture = false
+                                    vm.capture(true)
+                                }
+                            )
+                        }
+                )
+
+                // Balances the mic on the left so the shutter sits on the screen's centre line.
+                // Arrangement.spacedBy already contributes the S.lg gap on both sides, so this
+                // spacer matches the mic's width alone — adding the gap again would push the
+                // shutter S.lg to the left of centre.
+                Spacer(modifier = Modifier.width(56.dp))
+            }
         }
     }
 }

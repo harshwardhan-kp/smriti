@@ -1,0 +1,80 @@
+Add screen capture via MediaProjection, as a foreground service. Edit/create files directly.
+This is PART 1 of 2. Part 2 adds the floating bubble UI. Build ONLY what is listed here.
+
+GOAL
+Let the app capture a screenshot of whatever is on screen, from outside the app, without
+re-prompting the user for every capture.
+
+WHY MEDIAPROJECTION AND NOT AccessibilityService
+AccessibilityService.takeScreenshot() is silent and needs no consent, but Google rejects
+non-accessibility uses of it on Play Store and it grants the app the ability to read all screen
+content. The user chose the safer route deliberately. Do NOT add an AccessibilityService.
+
+WHY A LONG-LIVED PROJECTION
+On Android 14+ a MediaProjection consent token is SINGLE USE: createVirtualDisplay() throws
+SecurityException if the token is reused. So we cannot re-consent per capture without a system
+dialog every time. Instead: consent ONCE, keep one MediaProjection and one VirtualDisplay alive
+inside a foreground service, and pull frames from its ImageReader on demand. Android shows a
+screen-capture indicator while this is active; that is unavoidable and expected.
+
+1. app/src/main/AndroidManifest.xml
+   Add these permissions:
+       android.permission.FOREGROUND_SERVICE
+       android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION
+       android.permission.POST_NOTIFICATIONS
+   Do NOT add SYSTEM_ALERT_WINDOW yet - that belongs to part 2.
+   Do NOT touch the two existing tools:node="remove" lines for INTERNET and
+   ACCESS_NETWORK_STATE. The offline flavor must still pass :app:assertNoNetworkPermission;
+   MediaProjection needs no network.
+   Declare the service:
+       <service android:name=".capture.ScreenCaptureService"
+                android:foregroundServiceType="mediaProjection"
+                android:exported="false" />
+
+2. CREATE app/src/main/java/com/smriti/app/capture/ScreenCaptureService.kt
+   A foreground Service that owns the projection for its lifetime.
+     - Actions: ACTION_START (with the consent Intent extra), ACTION_CAPTURE, ACTION_STOP.
+     - On ACTION_START: startForeground() with a low-importance notification channel
+       ("Screen capture armed", channel id "smriti_screencap"), then build the MediaProjection
+       from the consent Intent, create ONE ImageReader (PixelFormat.RGBA_8888, maxImages = 2) at
+       the display's real size, and ONE VirtualDisplay bound to it.
+       Register a MediaProjection.Callback and stop the service from onStop() - Android 14+
+       requires the callback to be registered before createVirtualDisplay().
+     - On ACTION_CAPTURE: acquire the latest image, convert to Bitmap accounting for
+       rowStride padding (rowStride/pixelStride != width is common and getting this wrong
+       produces a skewed image), write it as JPEG quality 90 into the SAME directory
+       CapturePipeline writes photos to, then broadcast/callback the resulting File path.
+       ALWAYS close() the acquired Image, in a finally.
+     - On ACTION_STOP, and after IDLE_TIMEOUT_MS = 5 minutes with no capture: release the
+       VirtualDisplay, the ImageReader and the MediaProjection, then stopSelf(). The user asked
+       not to have a permanent recording indicator, so the projection must not outlive use.
+     - Expose `fun isArmed(): Boolean` via a companion @Volatile flag so the UI can tell whether
+       consent is currently held.
+     - Log to tag "SmritiScreenCap": armed, captured (with file size), released, and why.
+
+3. CREATE app/src/main/java/com/smriti/app/capture/ScreenCaptureConsentActivity.kt
+   A tiny transparent Activity whose only job is to launch
+   MediaProjectionManager.createScreenCaptureIntent() via the Activity Result API and hand the
+   result to ScreenCaptureService with ACTION_START, then finish(). Theme it so nothing is drawn.
+   Register it in the manifest with a transparent theme and android:exported="false".
+
+4. DEBUG HOOK - app/src/main/java/com/smriti/app/MainActivity.kt
+   Add the same extra pattern already used for smriti_selftest / smriti_npu / smriti_asrtest:
+       --ez smriti_screencap true   -> launches ScreenCaptureConsentActivity
+       --ez smriti_screengrab true  -> sends ACTION_CAPTURE to the service
+   This is how the feature gets tested over adb without the bubble existing yet. Follow the
+   existing style in that file exactly.
+
+CONSTRAINTS
+- Do NOT create any overlay/bubble UI - that is part 2.
+- Do NOT change CapturePipeline, Enricher, Extractor, the Asr classes, the Room schema, or any
+  existing UI screen.
+- Do NOT add an AccessibilityService.
+- Kotlin 2.0.21, coroutines, minSdk 26 (guard any API 29+/34+ calls with Build.VERSION checks;
+  foregroundServiceType and POST_NOTIFICATIONS need them).
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission MUST still pass. If it fails, report it rather than editing the
+  manifest guard.
+
+Print a summary of files created/changed.

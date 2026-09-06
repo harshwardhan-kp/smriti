@@ -1,0 +1,211 @@
+================================================================================
+SMRITI VISUAL LANGUAGE — HOUSE RULES
+Read this whole block before you change anything. It is not advisory.
+================================================================================
+
+The app is being moved onto the design language of antimattr.one. That language has already
+been ported into the codebase for you. Your job is to APPLY it, not to design anything. If a
+value you need is not in the files below, you are doing something the design does not call for
+— use the nearest thing that IS there.
+
+READ THESE THREE FILES FIRST, IN FULL:
+    app/src/main/java/com/smriti/app/ui/theme/Tokens.kt      — object S: every colour, every spacing step, every radius
+    app/src/main/java/com/smriti/app/ui/theme/Type.kt        — object SmritiType: every text style
+    app/src/main/java/com/smriti/app/ui/components/Primitives.kt — BracketLabel, NodeSquare, HairlineRule, DashedRule, SmritiButton, SmritiOutlineButton, SmritiChip, ChipKind, DisplayHeading, SectionLabel
+
+ABSOLUTE RULES
+
+1. NO LITERAL COLOURS. Not one `Color(0xFF...)` may survive in the file you are editing. Every
+   screen currently declares its own private `ColorAmber` / `ColorInk` / `ColorCream` /
+   `ColorCardBg` / `ColorChipBg` / `ColorRedAlert` at the top — DELETE those declarations and
+   replace every use with a member of `S`. The mapping is fixed:
+       ColorInk        (was the near-black page)  -> S.Paper        [the page is now near-white]
+       ColorCream      (was the light type)       -> S.Ink          [type is now near-black]
+       ColorCream@0.6  (was muted type)           -> S.Muted
+       ColorCream@0.45 (was faintest type)        -> S.MutedSoft
+       ColorCardBg / ColorChipBg (dark cards)     -> S.PaperSunk
+       ColorAmber      (was the accent)           -> S.Red          [the accent is now red]
+       ColorRedAlert   (was the live/overdue red) -> S.Red
+       a "still working" state                    -> S.Amber
+       a "done / settled" state                   -> S.Green
+       any border or divider                      -> S.Hairline
+
+2. NO LITERAL TEXT STYLES. No `fontSize =`, no `fontFamily =`, no `MaterialTheme.typography.*`,
+   no `fontWeight =` except where a SmritiType style already carries it. Every Text() gets
+   `style = SmritiType.<something>`. The mapping is fixed:
+       a screen's own title / a record's title  -> SmritiType.DisplaySmall  (Instrument Serif)
+       a card title                             -> SmritiType.Title
+       prose, summaries                         -> SmritiType.Body
+       a card's supporting line                 -> SmritiType.BodySmall
+       a control's sans label                   -> SmritiType.Label
+       timestamps, tags, counts, states         -> SmritiType.Meta / MetaMedium
+       any button label                         -> handled by SmritiButton, do not style it
+       transcripts and OCR output               -> SmritiType.Mono
+
+3. EVERY PIECE OF UI COPY IS LOWERCASE. Every string on antimattr.one is lowercase, including
+   its own name. "Timeline" becomes "timeline". "Open tasks" becomes "open tasks". "Could not
+   extract" becomes "could not extract". This applies to headings, labels, buttons, empty
+   states, placeholders and content descriptions' visible counterparts. It does NOT apply to
+   user data (a transcript, a person's name, a title the model wrote) — never lowercase what a
+   person said or wrote. It does not apply to contentDescription strings, which are for a
+   screen reader and should stay ordinary sentence case.
+
+4. NO LITERAL SPACING. Use S.xs (4), S.sm (6), S.md (10), S.gutter (16), S.lg (24), S.xl (32),
+   S.section (44). Horizontal page padding is S.gutter and nothing else.
+
+5. NO LITERAL RADII. Use S.r6 (the default — use this unless told otherwise), S.r8, S.r24,
+   S.pill. 12.dp and 16.dp corners are gone from this app.
+
+6. NO ELEVATION, NO SHADOWS. This language is drawn, not stacked. A card is separated by a
+   hairline border and a background one step back (S.PaperSunk), never by a shadow. If a
+   Material component insists on elevation, set it to 0.dp.
+
+7. Metadata wears brackets. Any small mono fact — a timestamp, a state, a count, a due date —
+   goes through `BracketLabel("...")`, which renders `[label]` with the brackets in red. Do not
+   hand-write square brackets into a string; call the component.
+
+WHAT NOT TO BREAK
+
+You are changing appearance ONLY. Do not change any of the following, in any file:
+  - navigation, callbacks, or the shape of any function's parameters
+  - ViewModels, DAOs, Flows, or anything that reads or writes the database
+  - which composable is rendered for which enrichmentState
+  - LazyColumn item keys (they are prefixed "task-" / "record-" to stop a key collision that
+    used to crash the timeline on scroll — leave them exactly as they are)
+  - the try/catch around BitmapFactory.decodeFile, or the branch that renders a mic glyph when
+    record.photoPath is blank (that is how a voice-only memory is drawn)
+  - any contentDescription that already exists
+
+TOOLCHAIN
+- Kotlin 2.0.21. Compose BOM 2024.09.03. minSdk 26, targetSdk 36.
+- material-icons-extended is available.
+- This app is offline-first; the `offline` flavour is the one that matters. `devcloud` is on
+  hold — add nothing to it, but it MUST still compile.
+- Must build BOTH flavours and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+================================================================================
+
+TASK: restyle the three remaining pieces of chrome.
+THREE FILES CHANGE, and nothing else:
+    app/src/main/java/com/smriti/app/ui/EnrichingIndicator.kt
+    app/src/main/java/com/smriti/app/MainActivity.kt          (the PermissionGate composable ONLY)
+    app/src/main/java/com/smriti/app/capture/BubbleService.kt (the two GradientDrawables ONLY)
+
+These are the last places the old amber-on-black palette survives. Each change is small and
+mechanical.
+
+--------------------------------------------------------------------------------
+FILE 1 — EnrichingIndicator.kt
+--------------------------------------------------------------------------------
+It contains two composables: ThinkingDots (three pulsing dots on a Canvas) and ShimmerLine (a
+sweeping placeholder bar). Both are drawn with the old palette imported from the theme package.
+
+  a) Change the two imports
+         import com.smriti.app.ui.theme.ColorAmber
+         import com.smriti.app.ui.theme.Cream
+     to
+         import com.smriti.app.ui.theme.S
+     and replace every use: `ColorAmber` -> `S.Amber`, `Cream` -> `S.Ink`.
+     Both symbols are @Deprecated and this file is the last thing importing them, so after your
+     change nothing in the app may reference `ColorAmber` or `Cream` — grep to confirm, and say
+     in your summary that you did.
+
+     S.Amber is correct here and S.Red is not: these two composables exist to say "the model is
+     still working on this". Amber is the app's only in-progress colour and red is the brand
+     accent, so using red would make every unfinished record shout.
+
+  b) ThinkingDots draws circles. Draw squares instead — 5.dp, with a 2.dp corner radius, using
+     `drawRoundRect` with `cornerRadius = CornerRadius(2.dp.toPx())`. The design language's
+     marker is a small rounded square (see NodeSquare in Primitives.kt), and three pulsing
+     circles are the one thing left in the app that looks like a generic loading spinner.
+     Keep the existing timing, the stagger, the alpha and size interpolation, and the
+     isReducedMotionEnabled branch EXACTLY as they are — only the shape changes. Adjust the
+     Canvas size from 26x8 dp to 26x6 dp and re-centre the three x positions if the squares no
+     longer sit evenly; state in your summary what you used.
+
+  c) ShimmerLine: change its brush colours to sweep between S.PaperSunk and
+     S.Hairline.copy(alpha = 0.9f) instead of the cream-based ones, and give it
+     `RoundedCornerShape(2.dp)` if it does not already have a corner radius. It is now drawn on
+     a light ground, so a light-on-dark shimmer reads as a bright bar rather than a placeholder.
+
+--------------------------------------------------------------------------------
+FILE 2 — MainActivity.kt, the PermissionGate composable ONLY
+--------------------------------------------------------------------------------
+Touch NOTHING above `@Composable fun PermissionGate`. In particular do not touch onCreate,
+onNewIntent, handleStartBubble, SmritiApp, the NavHost, any route, or any intent extra.
+
+The gate's failure state is currently a centred Column with a headlineMedium "Permissions
+Required", a bodyLarge sentence and a Material Button. Restyle it:
+  - The Box gets `.background(S.Paper)` and `contentAlignment = Alignment.TopStart`, and the
+    Column loses `verticalArrangement = Arrangement.Center` and
+    `horizontalAlignment = Alignment.CenterHorizontally`. Padding: `S.gutter` horizontal,
+    `S.section` from the top. Left-aligned and high is the house posture; centred in a void is
+    what we are moving away from.
+  - Heading: `DisplayHeading(text = "smriti needs two things", italicWord = "two")`,
+    style SmritiType.Display, color S.Ink.
+  - Spacer(S.md), then the body sentence, lowercased and rewritten to say what each permission
+    is FOR rather than naming the permissions:
+        "the camera, to read what is in front of you. the microphone, to hear what you say.
+         nothing leaves this phone."
+    style SmritiType.Body, colour S.Muted, `textAlign` removed (it inherits left).
+  - Spacer(S.lg), then two BracketLabels on a Row spaced S.md: `BracketLabel("camera")` and
+    `BracketLabel("microphone")`.
+  - Spacer(S.lg), then replace the Material `Button` with
+        SmritiButton(label = "grant", onClick = { launcher.launch(requiredPermissions) },
+                     primary = true)
+    Keep the launcher call identical.
+  - Delete the now-unused Material `Button`, `Arrangement` and `TextAlign` imports if nothing
+    else in the file uses them. Leave every other import alone.
+
+--------------------------------------------------------------------------------
+FILE 3 — BubbleService.kt, the two GradientDrawables ONLY
+--------------------------------------------------------------------------------
+Change ONLY the colour literals inside `normalDrawable` and `liveDrawable` in onCreate. Do not
+touch the sizes, the touch handling, the window params, the notification, the service
+lifecycle, the capture flow, or anything else in the file. This is a Service, not Compose, so
+it cannot import the `S` object's Compose Colors — use raw Int literals and put a comment above
+each naming the token it comes from.
+
+    normalDrawable  (the idle capture bubble)
+        setColor(0xE6EEEEEE.toInt())                       // S.Paper at 90%
+        setStroke((2 * density).toInt(), 0xFFE10909.toInt()) // S.Red
+    liveDrawable    (the capture bubble while recording)
+        setColor(0xFFE10909.toInt())                       // S.Red
+        setStroke((4 * density).toInt(), 0xFFEEEEEE.toInt()) // S.Paper
+
+There are now FOUR drawables in that block, not two — a mic bubble was added below the capture
+bubble. Change all four, and nothing else:
+
+    micNormalDrawable  (the idle mic bubble)
+        setColor(0xE60D0D0D.toInt())                        // S.Ink at 90%
+        setStroke((2 * density).toInt(), 0xFFEEEEEE.toInt()) // S.Paper
+    micLiveDrawable    (the mic bubble while recording)
+        setColor(0xFFE10909.toInt())                        // S.Red
+        setStroke((4 * density).toInt(), 0xFFEEEEEE.toInt()) // S.Paper
+
+The capture bubble was a translucent amber disc with a white ring, which no longer belongs to
+anything. As a pale disc with a red outline it reads as the same node-and-annotation mark the
+rest of the app uses.
+
+The two idle bubbles are deliberate opposites — a light disc and a dark disc — so a glance tells
+you which one your thumb is over without reading anything. Both invert to the SAME solid red
+when live, and that is also deliberate: only one can record at a time (the service guards it),
+so red means recording no matter which one you are holding, and there is nothing to
+disambiguate.
+
+--------------------------------------------------------------------------------
+Print a summary of what changed in each of the three files, and confirm that `ColorAmber` and
+`Cream` are no longer referenced anywhere in app/src.
+
+--------------------------------------------------------------------------------
+FILE 3, PART 2 — the notification text in BubbleService.kt
+--------------------------------------------------------------------------------
+`createNotification()` currently sets the content text to
+    "Hold the amber bubble to capture the screen · hold the red one for a voice note"
+After your colour change neither bubble is amber and only the live one is red, so that sentence
+describes nothing on screen. Replace it with
+    "hold the light bubble for the screen · hold the dark one for a voice note"
+Change only that one string. Leave the title, the channel, the id, the icon, the priority, the
+ongoing flag and the content intent exactly as they are.

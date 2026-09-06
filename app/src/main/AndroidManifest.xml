@@ -4,6 +4,32 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!--
+      Smriti Desk bridge. The phone is the BLE peripheral: it advertises and the Mac connects.
+
+      That direction is deliberate. A central has to scan, and BLUETOOTH_SCAN drags a
+      location-permission prompt behind it on every Android since 12. Advertising needs neither,
+      so nobody is asked for their location to use a capture bridge.
+
+      None of these is INTERNET. Bluetooth is not an IP socket, so the offline flavour still
+      cannot reach the network and assertNoNetworkPermission still passes. That is exactly
+      why the bridge is on Bluetooth and not on the LAN.
+    -->
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <!--
       Smriti is offline by construction, not by convention.
@@ -26,10 +52,11 @@
         android:required="true" />
 
     <application
+        android:extractNativeLibs="true"
         android:allowBackup="true"
-        android:icon="@android:drawable/sym_def_app_icon"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@android:drawable/sym_def_app_icon"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Smriti">
         <activity
@@ -41,6 +68,40 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".capture.ScreenCaptureConsentActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Smriti.Transparent" />
+
+        <service
+            android:name=".capture.ScreenCaptureService"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
+
+        <service
+            android:name=".bridge.BleBridgeService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="false" />
+
+        <service
+            android:name=".capture.BubbleService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Persistent capture overlay the user explicitly enabled" />
+        </service>
+        <!-- libQnnHtpV81Stub.so links against the vendor fastRPC client, which is how anything
+             reaches the Hexagon DSP at all. Vendor libraries are outside an app's linker
+             namespace unless the app names them, so without this the stub fails to dlopen and
+             Genie falls back with "Failed to load skel, error: 4000". The iQOO 15 lists all
+             three on its public-library allowlist (/vendor/etc/public.libraries*.txt).
+             required="false" so a handset without them still installs. -->
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
+        <uses-native-library android:name="libadsprpc.so" android:required="false" />
+        <uses-native-library android:name="libsdsprpc.so" android:required="false" />
+
     </application>
 
 </manifest>

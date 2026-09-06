@@ -1,0 +1,212 @@
+================================================================================
+SMRITI VISUAL LANGUAGE — HOUSE RULES
+Read this whole block before you change anything. It is not advisory.
+================================================================================
+
+The app is being moved onto the design language of antimattr.one. That language has already
+been ported into the codebase for you. Your job is to APPLY it, not to design anything. If a
+value you need is not in the files below, you are doing something the design does not call for
+— use the nearest thing that IS there.
+
+READ THESE THREE FILES FIRST, IN FULL:
+    app/src/main/java/com/smriti/app/ui/theme/Tokens.kt      — object S: every colour, every spacing step, every radius
+    app/src/main/java/com/smriti/app/ui/theme/Type.kt        — object SmritiType: every text style
+    app/src/main/java/com/smriti/app/ui/components/Primitives.kt — BracketLabel, NodeSquare, HairlineRule, DashedRule, SmritiButton, SmritiOutlineButton, SmritiChip, ChipKind, DisplayHeading, SectionLabel
+
+ABSOLUTE RULES
+
+1. NO LITERAL COLOURS. Not one `Color(0xFF...)` may survive in the file you are editing. Every
+   screen currently declares its own private `ColorAmber` / `ColorInk` / `ColorCream` /
+   `ColorCardBg` / `ColorChipBg` / `ColorRedAlert` at the top — DELETE those declarations and
+   replace every use with a member of `S`. The mapping is fixed:
+       ColorInk        (was the near-black page)  -> S.Paper        [the page is now near-white]
+       ColorCream      (was the light type)       -> S.Ink          [type is now near-black]
+       ColorCream@0.6  (was muted type)           -> S.Muted
+       ColorCream@0.45 (was faintest type)        -> S.MutedSoft
+       ColorCardBg / ColorChipBg (dark cards)     -> S.PaperSunk
+       ColorAmber      (was the accent)           -> S.Red          [the accent is now red]
+       ColorRedAlert   (was the live/overdue red) -> S.Red
+       a "still working" state                    -> S.Amber
+       a "done / settled" state                   -> S.Green
+       any border or divider                      -> S.Hairline
+
+2. NO LITERAL TEXT STYLES. No `fontSize =`, no `fontFamily =`, no `MaterialTheme.typography.*`,
+   no `fontWeight =` except where a SmritiType style already carries it. Every Text() gets
+   `style = SmritiType.<something>`. The mapping is fixed:
+       a screen's own title / a record's title  -> SmritiType.DisplaySmall  (Instrument Serif)
+       a card title                             -> SmritiType.Title
+       prose, summaries                         -> SmritiType.Body
+       a card's supporting line                 -> SmritiType.BodySmall
+       a control's sans label                   -> SmritiType.Label
+       timestamps, tags, counts, states         -> SmritiType.Meta / MetaMedium
+       any button label                         -> handled by SmritiButton, do not style it
+       transcripts and OCR output               -> SmritiType.Mono
+
+3. EVERY PIECE OF UI COPY IS LOWERCASE. Every string on antimattr.one is lowercase, including
+   its own name. "Timeline" becomes "timeline". "Open tasks" becomes "open tasks". "Could not
+   extract" becomes "could not extract". This applies to headings, labels, buttons, empty
+   states, placeholders and content descriptions' visible counterparts. It does NOT apply to
+   user data (a transcript, a person's name, a title the model wrote) — never lowercase what a
+   person said or wrote. It does not apply to contentDescription strings, which are for a
+   screen reader and should stay ordinary sentence case.
+
+4. NO LITERAL SPACING. Use S.xs (4), S.sm (6), S.md (10), S.gutter (16), S.lg (24), S.xl (32),
+   S.section (44). Horizontal page padding is S.gutter and nothing else.
+
+5. NO LITERAL RADII. Use S.r6 (the default — use this unless told otherwise), S.r8, S.r24,
+   S.pill. 12.dp and 16.dp corners are gone from this app.
+
+6. NO ELEVATION, NO SHADOWS. This language is drawn, not stacked. A card is separated by a
+   hairline border and a background one step back (S.PaperSunk), never by a shadow. If a
+   Material component insists on elevation, set it to 0.dp.
+
+7. Metadata wears brackets. Any small mono fact — a timestamp, a state, a count, a due date —
+   goes through `BracketLabel("...")`, which renders `[label]` with the brackets in red. Do not
+   hand-write square brackets into a string; call the component.
+
+WHAT NOT TO BREAK
+
+You are changing appearance ONLY. Do not change any of the following, in any file:
+  - navigation, callbacks, or the shape of any function's parameters
+  - ViewModels, DAOs, Flows, or anything that reads or writes the database
+  - which composable is rendered for which enrichmentState
+  - LazyColumn item keys (they are prefixed "task-" / "record-" to stop a key collision that
+    used to crash the timeline on scroll — leave them exactly as they are)
+  - the try/catch around BitmapFactory.decodeFile, or the branch that renders a mic glyph when
+    record.photoPath is blank (that is how a voice-only memory is drawn)
+  - any contentDescription that already exists
+
+TOOLCHAIN
+- Kotlin 2.0.21. Compose BOM 2024.09.03. minSdk 26, targetSdk 36.
+- material-icons-extended is available.
+- This app is offline-first; the `offline` flavour is the one that matters. `devcloud` is on
+  hold — add nothing to it, but it MUST still compile.
+- Must build BOTH flavours and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+================================================================================
+
+TASK: four defects found by running the app on a real iQOO 15 (Android 16, 384dp wide, 600dpi).
+Every one of these was seen in a screenshot from the device. They are appearance bugs only —
+change nothing about behaviour, navigation or state.
+
+TWO FILES CHANGE:
+    app/src/main/java/com/smriti/app/MainActivity.kt
+    app/src/main/java/com/smriti/app/ui/CaptureScreen.kt
+    app/src/main/java/com/smriti/app/ui/DetailScreen.kt
+(three, and nothing else)
+
+--------------------------------------------------------------------------------
+DEFECT 1 — a pale band above and below the camera preview
+FILE: MainActivity.kt, the SmritiApp composable ONLY
+--------------------------------------------------------------------------------
+On the capture screen there is now a #EEEEEE band across the top behind the status bar and
+another across the bottom behind the gesture bar, with the camera preview squeezed between
+them. It looks broken. It was invisible while the app was dark and became obvious when the app
+went to paper.
+
+The cause: SmritiApp wraps the NavHost in a Scaffold and applies its innerPadding —
+    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+        NavHost(..., modifier = Modifier.padding(innerPadding)) {
+so every screen is inset by the system bars and the window's paper background shows through.
+
+Delete that outer Scaffold entirely and give the NavHost the size directly:
+    NavHost(
+        navController = navController,
+        startDestination = "capture",
+        modifier = Modifier.fillMaxSize()
+    ) { ...unchanged... }
+Keep the PermissionGate wrapper, the navController, every route, every argument and every
+lambda exactly as they are.
+
+This is safe, and you must confirm each of these before you finish rather than assuming:
+  - CaptureScreen already applies statusBarsPadding() to its top row and navigationBarsPadding()
+    to its bottom column, so it insets itself and now fills the screen behind the bars.
+  - TimelineScreen, DetailScreen and AskScreen each have their OWN Scaffold with a TopAppBar and
+    already consume that Scaffold's innerPadding, so they keep their system-bar insets.
+Remove the now-unused Scaffold import if nothing else in the file uses it.
+
+--------------------------------------------------------------------------------
+DEFECT 2 — the status bar icons vanish over the camera
+FILE: CaptureScreen.kt
+--------------------------------------------------------------------------------
+Once defect 1 is fixed the camera preview runs behind the status bar. The theme sets
+`isAppearanceLightStatusBars = true` app-wide, which makes the system clock and icons DARK —
+correct on the paper screens, unreadable over a camera pointed at anything dark.
+
+The capture screen must flip them white while it is on screen and put them back when it leaves.
+Add, near the top of CaptureScreen's body:
+
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        DisposableEffect(Unit) {
+            val window = (view.context as? android.app.Activity)?.window
+            val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+            controller?.isAppearanceLightStatusBars = false
+            controller?.isAppearanceLightNavigationBars = false
+            onDispose {
+                controller?.isAppearanceLightStatusBars = true
+                controller?.isAppearanceLightNavigationBars = true
+            }
+        }
+    }
+
+`view.context` may be a ContextWrapper rather than an Activity, so the safe cast above must stay
+a safe cast — a hard cast here would crash on some hosts. If it resolves to null, do nothing;
+the bars simply keep the app-wide setting. Imports needed: androidx.compose.runtime.DisposableEffect,
+androidx.compose.ui.platform.LocalView, androidx.core.view.WindowCompat.
+
+--------------------------------------------------------------------------------
+DEFECT 3 — the idle hint runs edge to edge and wraps ragged
+FILE: CaptureScreen.kt
+--------------------------------------------------------------------------------
+The idle hint reads "tap for a photo · hold to add voice · hold the mic for voice only". At
+384dp that is too long: it wraps to two lines, the second line is left-aligned and half empty,
+and its dark pill touches both screen edges because the padding sits INSIDE the background.
+
+Two changes to that Text:
+
+  a) Shorten the idle string to
+         "tap: photo · hold: photo + voice · mic: voice only"
+     Leave the two held strings exactly as they are — they are correct and they were verified
+     on the device:
+         "listening — voice only, release to stop"
+         "listening — release to stop"
+
+  b) Fix the modifier order so the pill cannot touch the edges, and centre the text so a wrap
+     reads as deliberate:
+         modifier = Modifier
+             .padding(horizontal = S.gutter)          // OUTSIDE the pill — this is the fix
+             .background(S.InkDeep.copy(alpha = 0.6f), S.r6)
+             .padding(horizontal = S.md, vertical = S.xs)
+     and add `textAlign = TextAlign.Center` to the Text.
+     The first padding must come BEFORE .background in the chain. Padding after a background is
+     drawn inside it, which is why the pill currently bleeds off both edges.
+
+--------------------------------------------------------------------------------
+DEFECT 4 — the detail screen's metadata line collides with itself
+FILE: DetailScreen.kt
+--------------------------------------------------------------------------------
+The row under the photo holds two BracketLabels: the relative time and the enrichment model.
+The model string is long — on the device it reads
+    [cpu · gemma-3n-e4b-it-int4 · 4691 mb]
+which wraps onto a second line while [6 hours ago] stays on the first, and because they sit in a
+plain Row the two labels end up on different baselines with the time floating oddly low. It
+reads as a layout bug, which it is.
+
+Replace that Row with a FlowRow so each label stays whole and wraps as a unit:
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(S.md),
+        verticalArrangement = Arrangement.spacedBy(S.xs)
+    ) {
+        BracketLabel(formatRelativeTime(currentRecord.createdAt))
+        currentRecord.enrichmentModel?.let { BracketLabel(it) }
+    }
+The file already opts in to ExperimentalLayoutApi and already imports FlowRow for the chip rows
+— check before adding either. Keep both labels; the model string is genuinely useful and must
+not be truncated or dropped.
+
+--------------------------------------------------------------------------------
+Build both flavours, keep the tests green, and print a summary. State explicitly that you
+confirmed the three screens named in defect 1 handle their own insets.

@@ -9,16 +9,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,9 +29,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.smriti.app.ui.components.BracketLabel
+import com.smriti.app.ui.components.DisplayHeading
+import com.smriti.app.ui.components.SmritiButton
+import com.smriti.app.ui.theme.S
+import com.smriti.app.ui.theme.SmritiType
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -41,7 +45,18 @@ import com.smriti.app.ui.DetailScreen
 import com.smriti.app.ui.TimelineScreen
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.smriti.app.ai.Enricher
+import android.content.Intent
+import com.smriti.app.ai.NpuProbe
+import com.smriti.app.capture.AsrSelfTest
+import com.smriti.app.capture.BubbleLauncher
+import com.smriti.app.capture.BubbleService
+import com.smriti.app.capture.ScreenCaptureConsentActivity
+import com.smriti.app.capture.ScreenCaptureService
 import com.smriti.app.ui.theme.SmritiTheme
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,11 +82,63 @@ class MainActivity : ComponentActivity() {
                 resetPolicy = intent.getBooleanExtra("reset_backend", false)
             )
         }
+
+        if (intent?.getBooleanExtra(NpuProbe.EXTRA, false) == true) {
+            NpuProbe.run(this, lifecycleScope)
+        }
+
+        if (intent?.getBooleanExtra(AsrSelfTest.EXTRA, false) == true) {
+            AsrSelfTest.run(this, lifecycleScope)
+        }
+
+        if (intent?.getBooleanExtra("smriti_screencap", false) == true) {
+            startActivity(Intent(this, ScreenCaptureConsentActivity::class.java))
+        }
+
+        if (intent?.getBooleanExtra("smriti_screengrab", false) == true) {
+            ScreenCaptureService.capture(this)
+        }
+
+        if (intent?.getBooleanExtra("smriti_bubble", false) == true) {
+            handleStartBubble()
+        }
+
+        if (intent?.getBooleanExtra("smriti_bubble_off", false) == true) {
+            BubbleService.stop(this)
+        }
+
+        Enricher.request(this)
+
         setContent {
             SmritiTheme {
                 SmritiApp()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+
+        if (intent.getBooleanExtra("smriti_screencap", false)) {
+            startActivity(Intent(this, ScreenCaptureConsentActivity::class.java))
+        }
+
+        if (intent.getBooleanExtra("smriti_screengrab", false)) {
+            ScreenCaptureService.capture(this)
+        }
+
+        if (intent.getBooleanExtra("smriti_bubble", false)) {
+            handleStartBubble()
+        }
+
+        if (intent.getBooleanExtra("smriti_bubble_off", false)) {
+            BubbleService.stop(this)
+        }
+    }
+
+    private fun handleStartBubble() {
+        BubbleLauncher.start(this)
     }
 }
 
@@ -79,46 +146,44 @@ class MainActivity : ComponentActivity() {
 fun SmritiApp() {
     PermissionGate {
         val navController = rememberNavController()
-        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-            NavHost(
-                navController = navController,
-                // Capture is the app. The timeline is where you go afterwards.
-                startDestination = "capture",
-                modifier = Modifier.padding(innerPadding)
-            ) {
-                composable("capture") {
-                    CaptureScreen(
-                        onOpenTimeline = { navController.navigate("timeline") },
-                        onOpenAsk = { navController.navigate("ask") },
-                        onRecordSaved = { id -> navController.navigate("detail/$id") }
-                    )
-                }
-                composable("timeline") {
-                    TimelineScreen(
-                        onBack = { navController.popBackStack() },
-                        onOpenRecord = { id -> navController.navigate("detail/$id") }
-                    )
-                }
-                composable(
-                    route = "detail/{id}",
-                    arguments = listOf(
-                        navArgument("id") {
-                            type = NavType.LongType
-                        }
-                    )
-                ) { backStackEntry ->
-                    val recordId = backStackEntry.arguments?.getLong("id") ?: 0L
-                    DetailScreen(
-                        recordId = recordId,
-                        onBack = { navController.popBackStack() }
-                    )
-                }
-                composable("ask") {
-                    AskScreen(
-                        onBack = { navController.popBackStack() },
-                        onOpenRecord = { id -> navController.navigate("detail/$id") }
-                    )
-                }
+        NavHost(
+            navController = navController,
+            // Capture is the app. The timeline is where you go afterwards.
+            startDestination = "capture",
+            modifier = Modifier.fillMaxSize()
+        ) {
+            composable("capture") {
+                CaptureScreen(
+                    onOpenTimeline = { navController.navigate("timeline") },
+                    onOpenAsk = { navController.navigate("ask") },
+                    onRecordSaved = { id -> navController.navigate("detail/$id") }
+                )
+            }
+            composable("timeline") {
+                TimelineScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenRecord = { id -> navController.navigate("detail/$id") }
+                )
+            }
+            composable(
+                route = "detail/{id}",
+                arguments = listOf(
+                    navArgument("id") {
+                        type = NavType.LongType
+                    }
+                )
+            ) { backStackEntry ->
+                val recordId = backStackEntry.arguments?.getLong("id") ?: 0L
+                DetailScreen(
+                    recordId = recordId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable("ask") {
+                AskScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenRecord = { id -> navController.navigate("detail/$id") }
+                )
             }
         }
     }
@@ -164,29 +229,35 @@ fun PermissionGate(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
-            contentAlignment = Alignment.Center
+                .background(S.Paper)
+                .padding(horizontal = S.gutter)
+                .padding(top = S.section),
+            contentAlignment = Alignment.TopStart
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "Permissions Required",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground
+            Column {
+                DisplayHeading(
+                    text = "smriti needs two things",
+                    italicWord = "two",
+                    style = SmritiType.Display,
+                    color = S.Ink
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(S.md))
                 Text(
-                    text = "Smriti needs access to your Camera and Microphone to capture visual and audio work logs offline.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onBackground
+                    text = "the camera, to read what is in front of you. the microphone, to hear what you say. nothing leaves this phone.",
+                    style = SmritiType.Body,
+                    color = S.Muted
                 )
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = { launcher.launch(requiredPermissions) }) {
-                    Text("Grant Permissions")
+                Spacer(modifier = Modifier.height(S.lg))
+                Row(horizontalArrangement = Arrangement.spacedBy(S.md)) {
+                    BracketLabel("camera")
+                    BracketLabel("microphone")
                 }
+                Spacer(modifier = Modifier.height(S.lg))
+                SmritiButton(
+                    label = "grant",
+                    onClick = { launcher.launch(requiredPermissions) },
+                    primary = true
+                )
             }
         }
     }

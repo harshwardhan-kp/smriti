@@ -1,0 +1,83 @@
+Add the persistence layer for user-editable records. Edit files directly. UI comes in a
+separate task — do NOT touch any file under app/src/main/java/com/smriti/app/ui/.
+
+WHY
+A memory in this app is written once by the model and can never be corrected. The model gets
+titles, summaries, people, tags and amounts wrong regularly — that is the nature of a 1B model
+running on a phone. The user is about to be given an edit mode in the detail screen. This task
+builds only what that edit mode needs underneath it, and one guard so an edit cannot be silently
+undone.
+
+THE GUARD, and why it matters
+com.smriti.app.ai.Enricher.drain() picks up every record whose enrichmentState is 'PENDING' and
+overwrites title, summary, peopleJson, amountsJson, tagsJson, embedding and ocrText via
+RecordDao.applyEnrichment. Enrichment is retried up to 3 times and runs on a debounce, so a
+record the user edits while it is still PENDING — or one that failed twice and gets picked up
+again later — would have the user's own words replaced by the model's. That must be impossible.
+
+CHANGES
+
+1. app/src/main/java/com/smriti/app/data/RecordEntity.kt
+   Add one field, at the end of the constructor, after enrichmentError:
+       val userEdited: Boolean = false
+   RecordEntity has hand-written equals() and hashCode() because of the ByteArray. Add
+   userEdited to BOTH of them, in the same style as the surrounding lines.
+
+2. app/src/main/java/com/smriti/app/data/SmritiDb.kt
+   Bump `version = 2` to `version = 3`.
+   Add a MIGRATION_2_3 alongside the existing MIGRATION_1_2, in the same style:
+       ALTER TABLE records ADD COLUMN userEdited INTEGER NOT NULL DEFAULT 0
+   Register it in the databaseBuilder: .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+   Do NOT add fallbackToDestructiveMigration. Losing a user's captures on upgrade is worse than
+   a crash we would see immediately.
+
+3. app/src/main/java/com/smriti/app/data/RecordDao.kt
+   a) Guard the existing applyEnrichment query. Its WHERE clause is `WHERE id = :id`. Change it
+      to `WHERE id = :id AND userEdited = 0`. Change nothing else in that query.
+      Add a KDoc comment above it in the style of the rest of this codebase, one short paragraph,
+      saying that a record the user has edited is never overwritten by the model.
+   b) Add these new methods:
+
+      @Query("UPDATE records SET title = :title, summary = :summary, peopleJson = :people, amountsJson = :amounts, tagsJson = :tags, embedding = :embedding, userEdited = 1 WHERE id = :id")
+      suspend fun applyUserEdit(id: Long, title: String, summary: String, people: String, amounts: String, tags: String, embedding: ByteArray?)
+
+      @Query("UPDATE tasks SET text = :text, dueDateMillis = :dueDateMillis WHERE id = :id")
+      suspend fun updateTask(id: Long, text: String, dueDateMillis: Long?)
+
+      @Query("DELETE FROM tasks WHERE id = :id")
+      suspend fun deleteTask(id: Long)
+
+      @Insert(onConflict = OnConflictStrategy.REPLACE)
+      suspend fun insertTask(task: TaskEntity): Long
+
+      Note applyUserEdit deliberately does NOT touch enrichmentState, ocrText or transcript.
+      A record that is still PENDING stays PENDING — the userEdited flag is what protects it,
+      not the state — so the model may still fill in OCR and tasks for it later, which is
+      useful, while the fields the user typed are now immutable to the model.
+
+4. app/src/test/java/com/smriti/app/data/ — CREATE RecordDaoQueriesTest.kt
+   These are plain JVM unit tests, no Android instrumentation, no Robolectric — nothing in
+   app/src/test currently uses either and this must not be the first. So do NOT try to open a
+   real database. Test the two things that are pure logic and would silently break:
+     - Read the @Query annotation strings off RecordDao's methods with Kotlin reflection
+       (findAnnotation<Query>() / the java Method's getAnnotation) and assert that
+       applyEnrichment's value contains "userEdited = 0", and that applyUserEdit's value
+       contains "userEdited = 1".
+     - Assert MIGRATION_2_3.startVersion == 2 and endVersion == 3, and that SmritiDb's
+       @Database annotation reports version == 3.
+   If reflection over the annotation proves awkward from a unit test, say so in your summary and
+   write whichever of these you can rather than inventing an instrumentation test.
+
+CONSTRAINTS
+- Do NOT touch anything under app/src/main/java/com/smriti/app/ui/.
+- Do NOT touch CapturePipeline, BubbleCapturePipeline, BubbleService or ScreenCaptureService.
+- Do NOT change Enricher.kt's logic. The guard lives in the DAO query, not in Kotlin.
+- Do NOT change the Extractor prompt or StructuredRecord.
+- Kotlin 2.0.21, Room with KSP. minSdk 26, targetSdk 36.
+- This app is offline-first; the `offline` flavor is the one that matters. The `devcloud` flavor
+  is on hold — do not add features to it, but it MUST still compile.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+Print a summary of files changed and why.

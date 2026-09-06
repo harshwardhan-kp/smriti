@@ -4,7 +4,7 @@ import android.content.Context
 import java.io.File
 
 /**
- * Finds whatever MediaPipe `.task` language model has been provisioned onto the device.
+ * Finds whatever MediaPipe `.task` or `.litertlm` language model has been provisioned onto the device.
  *
  * The model is never bundled in the APK — it is 0.5 to 1.6 GB depending on which one is used,
  * and shipping it inside the package would put the APK far past anything installable.
@@ -18,14 +18,19 @@ object ModelProvisioner {
 
     private const val MIN_SIZE_BYTES = 100L * 1024 * 1024 // 100 MB
 
-    /** Searched in order; the first readable `.task` over 100 MB wins. */
+    /** Searched in order; the first readable `.task` or `.litertlm` over 100 MB wins. */
     private fun searchDirs(context: Context) = listOf(
         File(context.filesDir, "models"),
         File("/data/local/tmp/llm")
     )
 
     /** Preferred first when several models are present. Substring match, case-insensitive. */
-    private val preference = listOf("gemma3-1b", "gemma", "qwen2.5-1.5b", "qwen", "phi", "smollm")
+    // Gemma 3 1B is preferred over the larger 3n E4B on purpose. Measured on an iQOO 15:
+    // 1B extracts in 2-3 s, E4B in 15-45 s. E4B finds more (2/2 action items against 0-1),
+    // but a capture that fills in while you are still looking at it is worth more than a
+    // slightly richer one that lands a minute later. Move "gemma-3n" back to the front to
+    // trade speed for quality.
+    private val preference = listOf("gemma3-1b", "gemma-3n", "gemma3n", "gemma", "qwen2.5-1.5b", "qwen", "phi", "smollm")
 
     data class Model(val file: File, val label: String)
 
@@ -33,7 +38,7 @@ object ModelProvisioner {
         val found = searchDirs(context)
             .filter { it.isDirectory }
             .flatMap { dir -> dir.listFiles()?.toList().orEmpty() }
-            .filter { it.isFile && it.canRead() && it.name.endsWith(".task", ignoreCase = true) }
+            .filter { it.isFile && it.canRead() && (it.name.endsWith(".task", ignoreCase = true) || it.name.endsWith(".litertlm", ignoreCase = true)) }
             .filter { it.length() > MIN_SIZE_BYTES }
 
         if (found.isEmpty()) return null
@@ -50,6 +55,7 @@ object ModelProvisioner {
     private fun label(file: File): String {
         val name = file.name
             .removeSuffix(".task")
+            .removeSuffix(".litertlm")
             .substringBefore("_multi-prefill")
             .substringBefore("_seq")
         val mb = file.length() / (1024 * 1024)
@@ -61,7 +67,7 @@ object ModelProvisioner {
         return """
             No language model found.
 
-            Searched for any *.task file over 100 MB in:
+            Searched for any *.task or *.litertlm over 100 MB in:
 $dirs
 
             Push one with:

@@ -1,0 +1,262 @@
+================================================================================
+SMRITI VISUAL LANGUAGE — HOUSE RULES
+Read this whole block before you change anything. It is not advisory.
+================================================================================
+
+The app is being moved onto the design language of antimattr.one. That language has already
+been ported into the codebase for you. Your job is to APPLY it, not to design anything. If a
+value you need is not in the files below, you are doing something the design does not call for
+— use the nearest thing that IS there.
+
+READ THESE THREE FILES FIRST, IN FULL:
+    app/src/main/java/com/smriti/app/ui/theme/Tokens.kt      — object S: every colour, every spacing step, every radius
+    app/src/main/java/com/smriti/app/ui/theme/Type.kt        — object SmritiType: every text style
+    app/src/main/java/com/smriti/app/ui/components/Primitives.kt — BracketLabel, NodeSquare, HairlineRule, DashedRule, SmritiButton, SmritiOutlineButton, SmritiChip, ChipKind, DisplayHeading, SectionLabel
+
+ABSOLUTE RULES
+
+1. NO LITERAL COLOURS. Not one `Color(0xFF...)` may survive in the file you are editing. Every
+   screen currently declares its own private `ColorAmber` / `ColorInk` / `ColorCream` /
+   `ColorCardBg` / `ColorChipBg` / `ColorRedAlert` at the top — DELETE those declarations and
+   replace every use with a member of `S`. The mapping is fixed:
+       ColorInk        (was the near-black page)  -> S.Paper        [the page is now near-white]
+       ColorCream      (was the light type)       -> S.Ink          [type is now near-black]
+       ColorCream@0.6  (was muted type)           -> S.Muted
+       ColorCream@0.45 (was faintest type)        -> S.MutedSoft
+       ColorCardBg / ColorChipBg (dark cards)     -> S.PaperSunk
+       ColorAmber      (was the accent)           -> S.Red          [the accent is now red]
+       ColorRedAlert   (was the live/overdue red) -> S.Red
+       a "still working" state                    -> S.Amber
+       a "done / settled" state                   -> S.Green
+       any border or divider                      -> S.Hairline
+
+2. NO LITERAL TEXT STYLES. No `fontSize =`, no `fontFamily =`, no `MaterialTheme.typography.*`,
+   no `fontWeight =` except where a SmritiType style already carries it. Every Text() gets
+   `style = SmritiType.<something>`. The mapping is fixed:
+       a screen's own title / a record's title  -> SmritiType.DisplaySmall  (Instrument Serif)
+       a card title                             -> SmritiType.Title
+       prose, summaries                         -> SmritiType.Body
+       a card's supporting line                 -> SmritiType.BodySmall
+       a control's sans label                   -> SmritiType.Label
+       timestamps, tags, counts, states         -> SmritiType.Meta / MetaMedium
+       any button label                         -> handled by SmritiButton, do not style it
+       transcripts and OCR output               -> SmritiType.Mono
+
+3. EVERY PIECE OF UI COPY IS LOWERCASE. Every string on antimattr.one is lowercase, including
+   its own name. "Timeline" becomes "timeline". "Open tasks" becomes "open tasks". "Could not
+   extract" becomes "could not extract". This applies to headings, labels, buttons, empty
+   states, placeholders and content descriptions' visible counterparts. It does NOT apply to
+   user data (a transcript, a person's name, a title the model wrote) — never lowercase what a
+   person said or wrote. It does not apply to contentDescription strings, which are for a
+   screen reader and should stay ordinary sentence case.
+
+4. NO LITERAL SPACING. Use S.xs (4), S.sm (6), S.md (10), S.gutter (16), S.lg (24), S.xl (32),
+   S.section (44). Horizontal page padding is S.gutter and nothing else.
+
+5. NO LITERAL RADII. Use S.r6 (the default — use this unless told otherwise), S.r8, S.r24,
+   S.pill. 12.dp and 16.dp corners are gone from this app.
+
+6. NO ELEVATION, NO SHADOWS. This language is drawn, not stacked. A card is separated by a
+   hairline border and a background one step back (S.PaperSunk), never by a shadow. If a
+   Material component insists on elevation, set it to 0.dp.
+
+7. Metadata wears brackets. Any small mono fact — a timestamp, a state, a count, a due date —
+   goes through `BracketLabel("...")`, which renders `[label]` with the brackets in red. Do not
+   hand-write square brackets into a string; call the component.
+
+WHAT NOT TO BREAK
+
+You are changing appearance ONLY. Do not change any of the following, in any file:
+  - navigation, callbacks, or the shape of any function's parameters
+  - ViewModels, DAOs, Flows, or anything that reads or writes the database
+  - which composable is rendered for which enrichmentState
+  - LazyColumn item keys (they are prefixed "task-" / "record-" to stop a key collision that
+    used to crash the timeline on scroll — leave them exactly as they are)
+  - the try/catch around BitmapFactory.decodeFile, or the branch that renders a mic glyph when
+    record.photoPath is blank (that is how a voice-only memory is drawn)
+  - any contentDescription that already exists
+
+TOOLCHAIN
+- Kotlin 2.0.21. Compose BOM 2024.09.03. minSdk 26, targetSdk 36.
+- material-icons-extended is available.
+- This app is offline-first; the `offline` flavour is the one that matters. `devcloud` is on
+  hold — add nothing to it, but it MUST still compile.
+- Must build BOTH flavours and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission must still pass.
+
+================================================================================
+
+TASK: fix the timeline's spacing rhythm, and let a person delete memories.
+
+THREE FILES CHANGE:
+    app/src/main/java/com/smriti/app/data/RecordDao.kt
+    app/src/main/java/com/smriti/app/ui/TimelineViewModel.kt
+    app/src/main/java/com/smriti/app/ui/TimelineScreen.kt
+Nothing else.
+
+================================================================================
+PART 1 — the spacing rhythm around the hairlines
+================================================================================
+Reported from the device, and it is real. Every horizontal rule on the timeline sits flush
+against the content above it with a large gap below, so the rules read as belonging to the
+block above rather than separating two blocks. Measure the current code and you can see it:
+
+  RecordCard is
+      Column(Modifier.fillMaxWidth().clickable(...).padding(vertical = S.gutter)) {
+          Row(...) { ... }
+          HairlineRule()
+      }
+  which yields 16dp above the content, ZERO between the content and the rule, and 16dp below
+  the rule. The rule is glued to the text.
+
+  The two stickyHeaders are
+      Column(Modifier.padding(top = S.lg, bottom = S.md)) {
+          SectionLabel(...); Spacer(S.sm); HairlineRule()
+      }
+  which yields 6dp between the label and its rule but 10dp + the next row's 16dp = 26dp below
+  it. Same fault, worse.
+
+Fix all three so the space above a rule equals the space below it.
+
+  1a. RecordCard — move the vertical padding off the Column and onto the Row:
+          Column(Modifier.fillMaxWidth().clickable(...)) {          // no padding here
+              Row(Modifier.fillMaxWidth().padding(vertical = S.gutter), ...) { ... }
+              HairlineRule()
+          }
+      Now: 16dp above the content, 16dp below it, then the rule, then the next card's own 16dp.
+      Symmetric around every rule.
+
+  1b. Both stickyHeaders — drop the Column's bottom padding and widen the label-to-rule gap to
+      match what a row contributes below the rule:
+          Column(Modifier.padding(top = S.lg)) {                    // no bottom padding
+              SectionLabel(...)
+              Spacer(modifier = Modifier.height(S.gutter))          // was S.sm
+              HairlineRule()
+          }
+      Now: 24dp above the label (which separates one section from the previous one, and should
+      stay generous), 16dp label-to-rule, 16dp rule-to-first-row. Symmetric around the rule.
+
+  1c. TaskRow is already symmetric (S.sm above and below) but is tighter than everything else.
+      Change its Row padding from `vertical = S.sm` to `vertical = S.md`. Tasks stay denser than
+      memories, which is correct — they are one line each — but they stop looking cramped.
+
+Change no other spacing value on the screen.
+
+================================================================================
+PART 2 — deleting memories
+================================================================================
+There is no way to delete a memory. A wrong capture, a pocket recording, a duplicate — all of it
+is permanent. Long-press a memory to start selecting, tap to add more, then delete.
+
+Scope: MEMORIES ONLY. The "open tasks" section is not selectable and TaskRow is not to gain a
+long-press. Deleting a task is a different decision and is not part of this.
+
+2a. RecordDao.kt — add three queries and nothing else:
+
+    @Query("SELECT photoPath FROM records WHERE id IN (:ids)")
+    suspend fun photoPathsFor(ids: List<Long>): List<String>
+
+    @Query("DELETE FROM tasks WHERE recordId IN (:ids)")
+    suspend fun deleteTasksForRecords(ids: List<Long>)
+
+    @Query("DELETE FROM records WHERE id IN (:ids)")
+    suspend fun deleteRecords(ids: List<Long>)
+
+    There is no foreign key between tasks and records, so deleting a record does NOT remove its
+    tasks. Miss deleteTasksForRecords and the timeline's "open tasks" section keeps showing
+    tasks belonging to a memory that no longer exists, and tapping them leads nowhere. Delete
+    the tasks FIRST, then the records.
+
+2b. TimelineViewModel.kt — it is already an AndroidViewModel, so it has the Application context
+    needed to delete files. Add:
+
+    private val _selection = MutableStateFlow<Set<Long>>(emptySet())
+    val selection: StateFlow<Set<Long>> = _selection.asStateFlow()
+
+    fun startSelection(id: Long)        // sets the selection to exactly {id}
+    fun toggleSelection(id: Long)       // adds or removes; removing the last one leaves an empty set
+    fun clearSelection()                // empties it
+    fun deleteSelected()
+
+    deleteSelected, in viewModelScope.launch:
+      - snapshot `val ids = _selection.value.toList()`; return early if empty
+      - `val paths = dao.photoPathsFor(ids)` BEFORE deleting the rows — afterwards the paths are
+        gone and the photo files would be orphaned on disk forever
+      - dao.deleteTasksForRecords(ids), then dao.deleteRecords(ids)
+      - clear the selection
+      - then, on Dispatchers.IO, for each path that is not blank:
+            runCatching { java.io.File(path).delete() }
+        A voice-only memory has photoPath = "", so skip blanks. A failed file delete must not
+        throw — the database rows are already gone and that is what the user asked for.
+      The `records` StateFlow is fed by a Room Flow, so the list updates itself. Do not touch it.
+
+2c. TimelineScreen.kt
+
+    Selection state: `val selection by vm.selection.collectAsState()`, and
+    `val inSelectionMode = selection.isNotEmpty()`.
+
+    TOP BAR — two states, same Scaffold, same TopAppBar, just different content:
+      normal (as today):
+        navigationIcon = back arrow -> onBack
+        title = DisplayHeading("timeline", italicWord = "time")
+      selection mode:
+        navigationIcon = IconButton(Icons.Default.Close, "Exit selection") -> vm.clearSelection()
+        title = BracketLabelLive("${selection.size} selected")
+        actions = IconButton(Icons.Default.Delete, "Delete selected") -> shows the dialog below,
+                  tinted S.Red
+      Keep the same TopAppBarDefaults colours in both states.
+
+    BACK BEHAVIOUR: when inSelectionMode, the system back button must exit selection rather than
+    leave the screen. Add
+        BackHandler(enabled = inSelectionMode) { vm.clearSelection() }
+    (androidx.activity.compose.BackHandler — androidx.activity:activity-compose is already a
+    dependency).
+
+    RECORD ROWS — give RecordCard three new parameters, `selected: Boolean`,
+    `selectionMode: Boolean`, and `onLongClick: () -> Unit`, and replace its `.clickable(...)`
+    with
+        .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    The file already opts in to ExperimentalFoundationApi for stickyHeader — check before adding
+    it again. Import androidx.compose.foundation.combinedClickable.
+
+    At the call site:
+        onClick     = { if (inSelectionMode) vm.toggleSelection(record.id) else onOpenRecord(record.id) }
+        onLongClick = { vm.startSelection(record.id) }
+        selected    = selection.contains(record.id)
+        selectionMode = inSelectionMode
+    So a plain tap still opens a memory when nothing is selected, and becomes a toggle once
+    selection has started. That is the behaviour people already expect from a photo gallery.
+
+    SELECTED APPEARANCE — restrained, and it must not shift the layout:
+      - the Column gets `.background(if (selected) S.RedTint.copy(alpha = 0.10f) else Color.Transparent)`
+      - when `selectionMode` is true, add a trailing element to the row, after the text Column:
+            if (selected) NodeSquare(size = 10.dp) else Box(Modifier.size(10.dp))
+        with `Spacer(Modifier.width(S.md))` before it. The empty Box is deliberate — an
+        unselected row must reserve the same width so rows do not jump sideways when the first
+        long-press happens.
+      Do not add a checkbox, do not dim the thumbnail, do not change the title styling.
+
+    CONFIRMATION — deleting is not undoable, so ask. Use a Material3 AlertDialog held behind
+    `var showDeleteDialog by remember { mutableStateOf(false) }`:
+        containerColor = S.Paper, shape = S.r6, tonalElevation = 0.dp
+        title   = Text("delete ${selection.size} ${if (selection.size == 1) "memory" else "memories"}?",
+                       style = SmritiType.Title, color = S.Ink)
+        text    = Text("the photo, the transcript and any tasks go with it. this cannot be undone.",
+                       style = SmritiType.Body, color = S.Muted)
+        confirmButton = SmritiButton(label = "delete", primary = true,
+                          onClick = { vm.deleteSelected(); showDeleteDialog = false })
+        dismissButton = SmritiButton(label = "keep",
+                          onClick = { showDeleteDialog = false })
+      Lowercase throughout, as everywhere else.
+
+    EMPTY STATE: if the user deletes every memory the existing empty state must still appear.
+    It is driven by `records.isEmpty() && openTasks.isEmpty()` — leave that condition alone and
+    confirm it still holds after a delete.
+
+DO NOT change: the LazyColumn item keys, formatRelativeTime, formatDueDate, parseTags,
+vm.toggleTask, onOpenRecord's signature, or the thumbnail decode branches (photo / blank
+photoPath / failed decode).
+
+Build both flavours, keep tests green, and print a summary saying explicitly that tasks
+belonging to a deleted memory are deleted too.

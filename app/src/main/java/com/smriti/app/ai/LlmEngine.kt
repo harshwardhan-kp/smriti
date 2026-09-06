@@ -121,20 +121,30 @@ object LlmHolder {
         context: Context,
         forced: LlmInference.Backend? = null
     ): Result<LlmEngine> {
-        val current = engine
-        if (current != null) {
-            return Result.success(current)
+        if (forced == null) {
+            val current = engine
+            if (current != null) {
+                return Result.success(current)
+            }
         }
 
         return mutex.withLock {
-            val doubleCheck = engine
-            if (doubleCheck != null) {
-                Result.success(doubleCheck)
+            if (forced == null) {
+                val doubleCheck = engine
+                if (doubleCheck != null) {
+                    return@withLock Result.success(doubleCheck)
+                }
             } else {
-                val result = LlmEngine.create(context.applicationContext, forced)
-                result.onSuccess { engine = it }
-                result
+                // A forced backend must not return a stale engine built for the
+                // other backend. Drop the cached one (closing its native handle
+                // so it is never leaked) and rebuild below with `forced`.
+                val old = engine
+                engine = null
+                old?.close()
             }
+            val result = LlmEngine.create(context.applicationContext, forced)
+            result.onSuccess { engine = it }
+            result
         }
     }
 }

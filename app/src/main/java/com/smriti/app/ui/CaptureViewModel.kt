@@ -48,6 +48,18 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun captureVoiceOnly() {
+        captureJob?.cancel()
+        captureJob = viewModelScope.launch {
+            pipeline.runVoiceOnly().collect { currentStage ->
+                _stage.value = currentStage
+                if (currentStage is CaptureStage.Done) {
+                    _lastRecordId.value = currentStage.recordId
+                }
+            }
+        }
+    }
+
     fun stopVoice() {
         (asr as? PushToTalk)?.stopListening()
     }

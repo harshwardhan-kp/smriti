@@ -440,3 +440,209 @@ Both debug-signed, which is what makes them installable without a keystore.
 is confirmed present in both binaries by dex inspection, and everything builds with 24 tests
 green and lint clean — but `PlatformAsr.stopListening()` and the runtime-key path have not been
 exercised on a phone. Plug in and run `./scripts/verify-on-device.sh offline`.
+
+---
+
+### 2026-09-05 — iQOO 15 (SM8850): capture rebuilt, engine swapped, three earlier claims falsified
+
+First session on the target hardware. Two iQOO 15 units, Android 16, SM8850, 15.6 GB RAM.
+Branch: `offline-pipeline-rework`, 12+ commits, `main` untouched.
+
+**Corrections to claims above in this file. Read these before trusting the older entries.**
+
+**"MediaPipe's GPU LLM path is tuned for Adreno" is wrong.** It crashes on Adreno too, and the
+crash reproduces on two independent handsets. Device 1: `SIGSEGV`, fault addr 0x0. Device 2:
+`SIGABRT`. Both inside `Java_..._LlmTaskRunner_nativePredictSync`, both after the model loaded
+successfully. The USB link was polled throughout and never dropped, so this is not a
+disconnection artefact. Treat MediaPipe's GPU path as broken on Snapdragon 8 Elite Gen 5, not
+as a Mali-specific defect. `BackendPolicy`'s sentinel worked correctly on a fresh device: it
+quarantined the GPU after one crash with no intervention.
+
+**"devcloud exists because a generation takes 12–60 s on a handset" no longer holds here.**
+On this phone the on-device CPU path beat the cloud round trip: Muse Spark 4750 ms vs Gemma 1B
+961 ms for the same prompt. devcloud is still useful for prompt work, but not for the stated
+reason. Note also that this device's numbers drift with temperature — Gemma 1B measured
+12.5 tok/s on a cool handset and 7.5–9.0 on one that had been running models for hours.
+
+**The `muse` CLI 402 billing block is gone.** `muse exec --model muse-spark-1.3-contributor`
+works. Note the effort is a separate `--reasoning-effort` flag, not part of the model id.
+That said, muse stalled for 25 minutes on one dispatch with no output and no files written;
+`agy --model gemini-3.8-flash-high` was faster and more reliable across ~12 dispatches. Set
+`--print-timeout` on agy — the default is 5 minutes and a large spec will silently time out
+(it writes nothing on timeout, so retrying is safe).
+
+**Architecture changes**
+
+Capture no longer runs any model. It was: photo → OCR → ASR → LLM → insert, and the record
+only appeared after the language model finished — about 40 s of the user staring at a spinner
+for a transcript that had been ready in two. It is now: photo and ASR concurrently → insert →
+show, with all model work in a background `Enricher` pass. Measured shutter-release to visible
+record: **~1.4 s**.
+
+ASR is Whisper small int8 through sherpa-onnx, replacing Vosk (which remains as a fallback).
+Verified against reference WAVs with known transcripts: word-perfect, 852 ms load, ~4.5×
+faster than real time. sherpa-onnx is *not* on Maven Central — k2-fsa ship prebuilt AARs on
+GitHub releases; `scripts/fetch-sherpa.sh` retrieves it and the AAR is gitignored.
+
+OCR was removed from the capture path, then reinstated as an **isolated background channel**.
+It runs in enrichment, lands in `RecordEntity.ocrText`, and is deliberately NOT fed to the
+extraction prompt or the embedding. It exists for future features.
+
+LiteRT-LM is now the primary LLM engine with MediaPipe as fallback, and extraction uses
+constrained decoding (`ResponseFormat.json`, which requires the *Conversation* API and
+`enableResponseFormat = true` — the Session API will not accept it).
+
+**Hard-won facts**
+
+**NPU is a property of the model file, not the chip.** `Backend.NPU()` fails with
+`Model requires one of [cpu,gpu] but Main backend is NPU`. The generic `.litertlm` is not an
+NPU build. Google publishes per-SoC AOT artefacts — `gemma-3n-E2B-it-int4.mediatek.mt6993.litertlm`
+exists; nothing for Qualcomm. The Qualcomm route is Gemma 4 E4B via **Genie/QAIRT 2.45.0**,
+whose bundle is public (5 GB zip, 7.1 GB extracted, includes `vision_encoder.bin`) but ships
+**no runtime libraries** — those need the QAIRT SDK via Qualcomm Package Manager, plus a JNI
+bridge over Genie's C API. `genie-t2t-run` in that SDK can validate the NPU from adb before any
+code is written. Gemma 4 **E2B has no Qualcomm chipset assets at all**, so E4B is the only
+option there.
+
+**LiteRT-LM is 3× faster than MediaPipe on the identical model and backend** — 16.4 s vs
+45–50 s — because MediaPipe emits `<end_of_turn>` as literal text and regenerates the answer
+about ten times. LiteRT-LM applies Gemma's chat template.
+
+**litertlm-android 0.17.0 carries Kotlin 2.4.0 metadata** and KSP (needed by Room) tops out at
+2.3.11, so Kotlin cannot be bumped to match. Pinning the transitives down fails because
+litertlm's own classes carry the metadata. `-Xskip-metadata-version-check` on the existing
+2.0.21 toolchain works and avoids a migration.
+
+**Removing ML Kit did not free the manifest guard.** The `tools:node="remove"` lines are still
+load-bearing: `transport-backend-cct` now arrives via `mediapipe:tasks-text`, the embedder.
+Tested by deleting them — `assertNoNetworkPermission` failed. Moving embeddings to LiteRT-LM's
+`EmbeddingEngine` should finally free it.
+
+**A greedy `sed 's/^.*: /  /'` in a logcat filter destroys JSON.** It strips through the *last*
+`": "`, so `"actions": [` becomes `[`. This produced a false diagnosis of "malformed model
+output" that was entirely a filter artefact. `verify-on-device.sh` still contains this sed —
+use `adb logcat -v raw` when reading structured output.
+
+**Bugs found and fixed, none of which a green build would have caught**
+
+- Escaped JSON lost entire records. The model returned single-line `\n`/`\"`-escaped JSON;
+  `repairJson` had no unescape step, so both attempts failed and the capture fell back to raw
+  text — discarding a correct title, summary, two people and an amount. Fixed with a
+  parse-first unescape fallback.
+- The six-key schema prompt suppressed `actions` entirely. Reordered actions-first with an
+  explicit required-keys instruction; E4B went to 2/2, the smaller models 0 → 1.
+- Due dates were confabulated: "by Friday" became a Wednesday, and an action with no stated
+  deadline was given one. `DueDateResolver` now derives dates with `java.time` and returns null
+  when the transcript carries no temporal expression. English only so far.
+- Audio was clipped at both ends — the mic opened only after the camera finished, and closed
+  the instant the finger lifted. Now concurrent with the camera, plus a 700 ms trailing pad.
+- `SelfTest`'s `--es backend` / `--ez reset_backend` extras were inert, and `LlmHolder` returned
+  a cached engine even when a backend was forced.
+- Records stranded in `RUNNING` were never retried; `drain()` now resets them.
+
+**Known-open**
+
+- `Ocr.read()` keeps whichever recognizer returned *more* characters. On a Latin-only photo the
+  Devanagari model hallucinated more and won, yielding a Bengali zero and stray glyphs. Needs
+  script detection or confidence, tested against real bilingual paper.
+- No UI loader for `PENDING` records — "still enriching" and "produced nothing" look identical.
+- Everything after the phones were disconnected is unverified on hardware: the LiteRT-LM engine
+  swap, the date resolver, the audio-window fix, and the entire screen-capture bubble.
+
+### 2026-09-05 — edit mode, voice-only capture, and the antimattr visual language
+
+Three pieces of work, all on `offline-pipeline-rework`, none of it verified on hardware —
+no device was available. Everything below is verified only by a clean build of both flavours,
+67 unit tests green, and `assertNoNetworkPermission` clean.
+
+**1. A memory can be corrected.** A pencil in the detail top bar turns the screen into itself,
+editable in place: title, summary, people, tags, amounts, tasks. Transcript and OCR stay
+read-only — they are what the microphone heard and the camera saw, evidence rather than a
+draft.
+
+Schema v3 adds `userEdited`. The guard matters more than the column: `applyEnrichment` carries
+`AND userEdited = 0`, so a correction typed while a record is still enriching cannot be
+replaced by the model. That guard alone created a defect — a user-edited row matched zero rows,
+never reached DONE, stayed RUNNING, was reset to PENDING on the next drain and re-run through
+the model up to three times, inserting duplicate tasks each time. Fixed by having
+`applyUserEdit` set `enrichmentState = 'DONE'`, and by adding the same guard to
+`pendingEnrichment` and `resetRunningToPending`.
+
+Consequence worth remembering: **saving an edit finalises the record.** If enrichment had not
+finished, it will not come back to add OCR or extract tasks from it.
+
+**2. The photograph is optional.** A 56dp mic beside the 84dp shutter, and a second smaller mic
+bubble below the capture bubble in the overlay. Both hold-to-talk, release to stop. A
+voice-only record is `photoPath = ""` — no column, no placeholder file. A blank transcript is
+never saved: no photo and no words is a row you can neither read nor delete.
+
+The two bubbles share one `Asr`, so one `@Volatile` flag stops both recording at once. A failed
+mic-bubble attach is logged, not fatal — the capture bubble is the primary feature.
+
+**3. The app is on paper.** antimattr.one's language ported deliberately, not approximated. The
+site's own `--token-*` values, read out of its live DOM: ground `#EEEEEE`, ink `#0D0D0D`, muted
+`#5E5E5E`, hairline `#BABABA4D`, and the token its CSS names Red-primary, `#E10909`.
+
+Three typefaces, one job each, bundled as static instances because the offline flavour has no
+INTERNET permission and downloadable fonts were never an option (644 KB, OFL, licences in
+`notes/licenses/`):
+  Instrument Serif  display only, with one word per headline in italic
+  Schibsted Grotesk anything read as prose or tapped as a control
+  Geist Mono        all metadata, lowercase, wrapped in red [brackets]
+
+Red takes the accent, so the semantic states moved off it: amber is work-in-progress, green is
+settled. All UI copy is lowercase. 6dp radii, hairlines instead of cards, no shadows anywhere.
+
+`ui/theme/Tokens.kt`, `ui/theme/Type.kt` and `ui/components/Primitives.kt` are the system; every
+screen was migrated onto them and **no `Color(0xFF...)` literal survives anywhere in the UI**.
+Design proof, rendered at 360x740 with the real faces:
+https://claude.ai/code/artifact/50515d9b-6799-476c-9d80-0203faf982d5
+
+**Worker fleet note.** All eight tasks went to `agy --model gemini-3.8-flash-high`, run strictly
+one at a time — two workers running `./gradlew` in the same tree fight over the Gradle lock and
+compile each other's half-written files. Specs in `notes/task-*.txt`, with the shared visual
+rules in `notes/redesign-preamble.txt`. One dispatch died on a network error and was re-run.
+
+The model was right and I was wrong once: my capture-screen spec told it to use both
+`Arrangement.spacedBy(S.lg)` and a `56.dp + S.lg` trailing spacer, which double-counts the gap
+and pushes the shutter 12dp left of centre. It implemented what I asked, flagged the error in
+its summary, and I fixed the value.
+
+### 2026-09-05 later — verified on the iQOO 15 (SM8850, Android 16, 384dp @ 600dpi)
+
+Everything above was written blind. It has now been installed and exercised on the demo device.
+
+**Passed**
+- **Room 2->3 migration against the real database.** It held 31 records at v2; after the first
+  Room access it was v3 with all 31 intact and `userEdited` present and 0. No crash.
+- **Edit mode end to end.** Edited a title and saved: `userEdited` 0->1, state DONE, text
+  persisted and visible in the timeline.
+- **The enrichment guard genuinely guards.** Forced an edited record AND a control record back
+  to PENDING, restarted, waited for a drain. The enricher logged `Pending enrichment: 1
+  record(s)` — it saw only the control, enriched it in 21.5 s, and never touched the edited one,
+  whose `enrichmentAttempts` stayed at 0.
+- **Both voice-only paths.** In-app mic and mic bubble each produced `AudioRecord start(N)` /
+  `stop(N)` in logcat, and the stop lands on release rather than at the 15 s timeout — so
+  `stopListening()` does terminate `transcribe()` promptly. Both went red while live. Neither
+  saved a record from silence, so `isWorthSaving` holds on device.
+- **Both overlay windows attach on OriginOS** — "Bubble overlay attached" and "Mic bubble
+  overlay attached" — and read as intended over another app: a pale disc with a red ring and a
+  smaller dark disc below it.
+
+**Four defects found by looking, all fixed in 3ca3ac8**
+- a #EEEEEE band above and below the camera preview: `SmritiApp`'s outer Scaffold was insetting
+  every screen and the paper window background showed through. Removing it also removed a double
+  inset the other three screens were paying twice for.
+- status bar icons unreadable over the preview once it ran edge to edge
+- the hint pill bleeding off both screen edges, and its 49-character string orphaning "only"
+- the detail metadata line colliding with itself when the model label wrapped
+
+**Still unverified**
+- Devanagari in the new faces. None of the three carries it, so Hindi relies on Android's
+  per-glyph system fallback. Expected to work; no Hindi record was captured to prove it.
+- A voice-only record end to end WITH speech. Silence was tested (correctly saves nothing);
+  nobody spoke into the device, so no voice-only row has ever been written.
+- The bubble's screen-capture path after the recolour, and bubble survival over hours.
+- Re-enrichment inserts a duplicate set of tasks. Not reachable in normal use — a record is
+  enriched once — but forcing a DONE record back to PENDING duplicates its tasks. Pre-existing,
+  out of scope, noted here because a demo reset could hit it.

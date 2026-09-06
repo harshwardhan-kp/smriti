@@ -1,0 +1,78 @@
+Add the floating capture bubble. Edit/create files directly. This is PART 2 of 2.
+
+PART 1 IS ALREADY DONE - DO NOT REDO
+app/src/main/java/com/smriti/app/capture/ScreenCaptureService.kt exists and works:
+  ACTION_START (with consent Intent) arms it, ACTION_CAPTURE writes one JPEG into
+  filesDir/photos and reports the File, ACTION_STOP releases. isArmed() reports state.
+  ScreenCaptureConsentActivity already handles the consent dialog.
+READ BOTH FILES FIRST and reuse them exactly as they are.
+
+THE FEATURE
+A floating bubble sits over other apps. LONG-PRESS it and two things happen at once:
+a screenshot of whatever was on screen is taken, and voice recording starts. On RELEASE,
+recording stops and a record is saved with that screenshot as its photo and the transcript as
+its text - exactly like a normal capture, then enriched in the background like any other.
+A short TAP does nothing destructive: just show a brief hint that they should hold to capture.
+
+1. app/src/main/AndroidManifest.xml
+   Add ONLY: android.permission.SYSTEM_ALERT_WINDOW
+   Declare: <service android:name=".capture.BubbleService" android:exported="false" />
+   Do NOT touch the two tools:node="remove" lines for INTERNET / ACCESS_NETWORK_STATE.
+   The offline flavor must still pass :app:assertNoNetworkPermission.
+
+2. CREATE app/src/main/java/com/smriti/app/capture/BubbleService.kt
+   A Service that adds a small draggable overlay View via WindowManager with
+   TYPE_APPLICATION_OVERLAY, FLAG_NOT_FOCUSABLE, and a translucent circular amber drawable
+   matching the app's shutter (see ui/theme for ColorAmber).
+   Gesture handling on the overlay, via a raw OnTouchListener (NOT Compose - this is a
+   WindowManager view):
+     - ACTION_DOWN: record the down time and position. Start a Handler postDelayed of 400 ms
+       that, if not cancelled, begins the capture: fire ScreenCaptureService ACTION_CAPTURE and
+       start voice recording. Visually grow/brighten the bubble so the user can see it is live.
+     - ACTION_MOVE beyond touch slop: treat as a DRAG, cancel the pending long-press, and move
+       the overlay via WindowManager.updateViewLayout. Persist the last position in
+       SharedPreferences so it stays where the user left it.
+     - ACTION_UP: if the long-press had fired, stop recording and complete the capture. If not,
+       it was a tap - show a short Toast "Hold to capture" and do nothing else.
+   IMPORTANT ORDERING: request the screenshot FIRST, before starting the recorder. The
+   screenshot must show the screen the user was looking at when they pressed, not the app after
+   it has been disturbed.
+
+3. CREATE app/src/main/java/com/smriti/app/capture/BubbleCapturePipeline.kt
+   The bubble cannot reuse CapturePipeline: that class takes a CameraController and captures
+   from the camera. This one takes an ALREADY EXISTING photo File.
+       class BubbleCapturePipeline(context, dao, asr) {
+           suspend fun capture(photoFile: File): Long   // returns the new record id
+       }
+   It must mirror CapturePipeline's post-transcript half EXACTLY - read that file and copy the
+   shape:
+     - transcript = asr.transcribe()
+     - insert RecordEntity immediately with photoPath, transcript, provisional title from the
+       existing titleFor-style logic, empty summary/people/amounts/tags, transcript-only
+       embedding, enrichmentState = "PENDING"
+     - then Enricher.request(context)
+   Do NOT call Extractor, BackendFactory or Ocr here. Capture stays instant; enrichment is
+   already handled by the background pass.
+   Reuse Enricher.embedFor(...) for the embedding, as CapturePipeline does.
+   The Asr instance must come from AsrFactory.create(context) so the bubble gets Whisper.
+
+4. ENTRY POINT - app/src/main/java/com/smriti/app/MainActivity.kt
+   Follow the existing extra pattern used for smriti_selftest / smriti_npu / smriti_screencap:
+       --ez smriti_bubble true     start BubbleService
+       --ez smriti_bubble_off true stop BubbleService
+   Before starting, if Settings.canDrawOverlays(context) is false, launch
+   ACTION_MANAGE_OVERLAY_PERMISSION for the package rather than failing silently.
+   Also arm ScreenCaptureService if it is not already armed (reuse ScreenCaptureConsentActivity).
+
+CONSTRAINTS
+- Do NOT modify CapturePipeline, Enricher, Extractor, the Asr classes, Ocr, ScreenCaptureService,
+  the Room schema, or any existing UI screen.
+- Do NOT add an AccessibilityService.
+- No Compose in the overlay - WindowManager overlays take a plain View.
+- Kotlin 2.0.21, coroutines. minSdk 26: TYPE_APPLICATION_OVERLAY needs API 26+, which is fine.
+  Guard POST_NOTIFICATIONS / foregroundServiceType calls with Build.VERSION checks.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- :app:assertNoNetworkPermission MUST still pass.
+
+Print a summary of files created/changed.

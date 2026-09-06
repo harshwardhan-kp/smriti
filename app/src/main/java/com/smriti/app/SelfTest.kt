@@ -33,8 +33,9 @@ object SelfTest {
     /**
      * @param backend "cpu", "gpu" or null for the policy default.
      * @param resetPolicy clears any GPU quarantine before running.
-     * Note: backend and resetPolicy are honoured only by the offline flavor's BackendFactory.
-     * In the devcloud flavor they are logged but otherwise ignored.
+     * Both are passed through to BackendFactory.create: the offline flavor resets the
+     * policy and forces LlmHolder to rebuild with the requested backend, while the
+     * devcloud flavor logs them but otherwise ignores them.
      */
     fun run(
         context: Context,
@@ -49,7 +50,7 @@ object SelfTest {
             Log.i(TAG, "=== SELF TEST START ===")
 
             val loadStart = System.currentTimeMillis()
-            val backendResult = BackendFactory.create(context)
+            val backendResult = BackendFactory.create(context, backend, resetPolicy)
             val loadMs = System.currentTimeMillis() - loadStart
 
             val llmBackend = backendResult.getOrElse { t ->

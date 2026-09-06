@@ -16,7 +16,11 @@ class MuseBackend(
 
     override val label: String = "Muse Spark (cloud, dev only)"
 
-    override suspend fun generate(prompt: String, maxTokens: Int): String = withContext(Dispatchers.IO) {
+    override suspend fun generate(
+        prompt: String,
+        maxTokens: Int,
+        jsonSchema: String?
+    ): String = withContext(Dispatchers.IO) {
         var lastIOException: IOException? = null
         var lastCode: Int? = null
         var lastBody: String? = null

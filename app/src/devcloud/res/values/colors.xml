@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- devcloud overrides the offline flavor's red with the green Muse build colour -->
+    <color name="ic_launcher_background">#00A651</color>
+</resources>

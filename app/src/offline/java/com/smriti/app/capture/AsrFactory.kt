@@ -5,8 +5,12 @@ import android.content.Context
 /**
  * Offline flavor ASR factory.
  *
- * Prefers [VoskAsr] when a Vosk model is present on-device; falls back to
- * [PlatformAsr] otherwise.
+ * Prefers [SherpaWhisperAsr] when a Whisper model is present on-device; falls back
+ * to [VoskAsr] when a Vosk model is present; and falls back to [PlatformAsr] otherwise.
+ *
+ * Whisper small (multilingual) handles Hindi/English code-switching and provides
+ * higher transcription accuracy for offline capture. Vosk provides a lightweight
+ * fully offline fallback when Whisper models are not provisioned.
  *
  * The platform recogniser (Android SpeechRecognizer) is known to fail with
  * LANGUAGE_PACK_ERROR (code 13) on devices without an offline speech language
@@ -18,10 +22,10 @@ import android.content.Context
  */
 object AsrFactory {
     fun create(context: Context): Asr {
-        return if (VoskModelProvisioner.locate(context) != null) {
-            VoskAsr(context)
-        } else {
-            PlatformAsr(context)
+        return when {
+            WhisperModelProvisioner.locate(context) != null -> SherpaWhisperAsr(context)
+            VoskModelProvisioner.locate(context) != null -> VoskAsr(context)
+            else -> PlatformAsr(context)
         }
     }
 }

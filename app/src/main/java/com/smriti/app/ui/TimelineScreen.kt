@@ -18,19 +18,24 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,7 +44,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,8 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -56,15 +62,20 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.smriti.app.data.RecordEntity
 import com.smriti.app.data.TaskEntity
+import com.smriti.app.ui.components.BracketLabel
+import com.smriti.app.ui.components.BracketLabelLive
+import com.smriti.app.ui.components.ChipKind
+import com.smriti.app.ui.components.DisplayHeading
+import com.smriti.app.ui.components.HairlineRule
+import com.smriti.app.ui.components.NodeSquare
+import com.smriti.app.ui.components.SectionLabel
+import com.smriti.app.ui.components.SmritiButton
+import com.smriti.app.ui.components.SmritiChip
+import com.smriti.app.ui.theme.S
+import com.smriti.app.ui.theme.SmritiType
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-private val ColorAmber = Color(0xFFF2B705)
-private val ColorInk = Color(0xFF0B0B0B)
-private val ColorCream = Color(0xFFFBF8F1)
-private val ColorRedAlert = Color(0xFFE53935)
-private val ColorCardBg = Color(0xFF181818)
 
 private fun formatRelativeTime(createdAt: Long): String {
     val now = System.currentTimeMillis()
@@ -114,110 +125,200 @@ fun TimelineScreen(
     val records by vm.records.collectAsState()
     val tasks by vm.tasks.collectAsState()
     val openTasks = remember(tasks) { tasks.filter { !it.done } }
+    val selection by vm.selection.collectAsState()
+    val inSelectionMode = selection.isNotEmpty()
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = inSelectionMode) { vm.clearSelection() }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = {
+                Text(
+                    text = "delete ${selection.size} ${if (selection.size == 1) "memory" else "memories"}?",
+                    style = SmritiType.Title,
+                    color = S.Ink
+                )
+            },
+            text = {
+                Text(
+                    text = "the photo, the transcript and any tasks go with it. this cannot be undone.",
+                    style = SmritiType.Body,
+                    color = S.Muted
+                )
+            },
+            confirmButton = {
+                SmritiButton(
+                    label = "delete",
+                    primary = true,
+                    onClick = {
+                        vm.deleteSelected()
+                        showDeleteDialog = false
+                    }
+                )
+            },
+            dismissButton = {
+                SmritiButton(
+                    label = "keep",
+                    onClick = { showDeleteDialog = false }
+                )
+            },
+            shape = S.r6,
+            containerColor = S.Paper,
+            tonalElevation = 0.dp
+        )
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Timeline",
-                        color = ColorCream,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = ColorCream
+                    if (inSelectionMode) {
+                        BracketLabelLive("${selection.size} selected")
+                    } else {
+                        DisplayHeading(
+                            text = "timeline",
+                            italicWord = "time",
+                            style = SmritiType.DisplaySmall,
+                            color = S.Ink
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = ColorInk)
+                navigationIcon = {
+                    if (inSelectionMode) {
+                        IconButton(onClick = { vm.clearSelection() }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Exit selection",
+                                tint = S.Ink
+                            )
+                        }
+                    } else {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = S.Ink
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    if (inSelectionMode) {
+                        IconButton(onClick = { showDeleteDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete selected",
+                                tint = S.Red
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = S.Paper,
+                    titleContentColor = S.Ink,
+                    navigationIconContentColor = S.Ink
+                )
             )
         },
-        containerColor = ColorInk
+        containerColor = S.Paper
     ) { innerPadding ->
         if (records.isEmpty() && openTasks.isEmpty()) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
+                    .padding(horizontal = S.gutter)
+                    .padding(top = S.xl)
             ) {
+                DisplayHeading(
+                    text = "nothing captured yet",
+                    italicWord = "nothing",
+                    style = SmritiType.Display,
+                    color = S.Ink
+                )
+                Spacer(modifier = Modifier.height(S.md))
                 Text(
-                    text = "Nothing captured yet. Point the camera at something and talk.",
-                    color = ColorCream.copy(alpha = 0.6f),
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center
+                    text = "point the camera at something and talk, or hold the mic and just talk.",
+                    style = SmritiType.Body,
+                    color = S.Muted
                 )
             }
         } else {
-            LazyColumn(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(horizontal = 16.dp)
             ) {
-                if (openTasks.isNotEmpty()) {
-                    stickyHeader {
-                        Surface(
-                            color = ColorInk,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "Open tasks",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = ColorAmber,
-                                modifier = Modifier.padding(vertical = 12.dp)
-                            )
-                        }
-                    }
-
-                    // Keys must be unique across the WHOLE LazyColumn, not per items() block. Tasks and
-                    // records are separate tables with their own autoincrement ids, so task 1 and
-                    // record 1 collided and Compose threw IllegalArgumentException("Key \"1\" was
-                    // already used") on the first scroll that measured both sections.
-                    items(openTasks, key = { "task-${it.id}" }) { task ->
-                        TaskRow(
-                            task = task,
-                            onToggle = { done -> vm.toggleTask(task.id, done) }
-                        )
-                    }
-
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
+                Row(
+                    modifier = Modifier.padding(start = S.gutter, end = S.gutter, bottom = S.gutter),
+                    horizontalArrangement = Arrangement.spacedBy(S.md)
+                ) {
+                    BracketLabel("${records.size} memories")
+                    BracketLabel("${openTasks.size} open")
                 }
 
-                if (records.isNotEmpty()) {
-                    stickyHeader {
-                        Surface(
-                            color = ColorInk,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "Timeline",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = ColorAmber,
-                                modifier = Modifier.padding(vertical = 12.dp)
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = S.gutter),
+                    contentPadding = PaddingValues(bottom = S.section)
+                ) {
+                    if (openTasks.isNotEmpty()) {
+                        stickyHeader {
+                            Surface(
+                                color = S.Paper,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(top = S.lg)
+                                ) {
+                                    SectionLabel("open tasks")
+                                    Spacer(modifier = Modifier.height(S.gutter))
+                                    HairlineRule()
+                                }
+                            }
+                        }
+
+                        // Keys must be unique across the WHOLE LazyColumn, not per items() block. Tasks and
+                        // records are separate tables with their own autoincrement ids, so task 1 and
+                        // record 1 collided and Compose threw IllegalArgumentException("Key \"1\" was
+                        // already used") on the first scroll that measured both sections.
+                        items(openTasks, key = { "task-${it.id}" }) { task ->
+                            TaskRow(
+                                task = task,
+                                onToggle = { done -> vm.toggleTask(task.id, done) }
                             )
                         }
                     }
 
-                    items(records, key = { "record-${it.id}" }) { record ->
-                        RecordCard(
-                            record = record,
-                            onClick = { onOpenRecord(record.id) }
-                        )
-                    }
+                    if (records.isNotEmpty()) {
+                        stickyHeader {
+                            Surface(
+                                color = S.Paper,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(top = S.lg)
+                                ) {
+                                    SectionLabel("memories")
+                                    Spacer(modifier = Modifier.height(S.gutter))
+                                    HairlineRule()
+                                }
+                            }
+                        }
 
-                    item {
-                        Spacer(modifier = Modifier.height(24.dp))
+                        items(records, key = { "record-${it.id}" }) { record ->
+                            RecordCard(
+                                record = record,
+                                selected = selection.contains(record.id),
+                                selectionMode = inSelectionMode,
+                                onClick = { if (inSelectionMode) vm.toggleSelection(record.id) else onOpenRecord(record.id) },
+                                onLongClick = { vm.startSelection(record.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -230,56 +331,53 @@ private fun TaskRow(
     task: TaskEntity,
     onToggle: (Boolean) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .background(ColorCardBg, RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Checkbox(
-            checked = task.done,
-            onCheckedChange = onToggle,
-            colors = CheckboxDefaults.colors(
-                checkedColor = ColorAmber,
-                checkmarkColor = ColorInk,
-                uncheckedColor = ColorCream.copy(alpha = 0.6f)
-            )
-        )
-
-        Text(
-            text = task.text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = ColorCream,
-            modifier = Modifier.weight(1f)
-        )
-
-        task.dueDateMillis?.let { dueMillis ->
-            val isOverdue = dueMillis < System.currentTimeMillis()
-            Surface(
-                shape = RoundedCornerShape(percent = 50),
-                color = if (isOverdue) ColorRedAlert.copy(alpha = 0.2f) else ColorAmber.copy(alpha = 0.15f),
-                border = BorderStroke(1.dp, if (isOverdue) ColorRedAlert else ColorAmber.copy(alpha = 0.5f)),
-                modifier = Modifier.padding(start = 8.dp, end = 4.dp)
-            ) {
-                Text(
-                    text = formatDueDate(dueMillis),
-                    color = if (isOverdue) ColorRedAlert else ColorAmber,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = S.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = task.done,
+                onCheckedChange = onToggle,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = S.Red,
+                    checkmarkColor = S.White,
+                    uncheckedColor = S.Hairline
                 )
+            )
+
+            Text(
+                text = task.text,
+                style = SmritiType.Body,
+                color = if (task.done) S.MutedSoft else S.Ink,
+                textDecoration = if (task.done) TextDecoration.LineThrough else null,
+                modifier = Modifier.weight(1f)
+            )
+
+            task.dueDateMillis?.let { dueMillis ->
+                val isOverdue = dueMillis < System.currentTimeMillis()
+                Spacer(modifier = Modifier.width(S.sm))
+                if (isOverdue) {
+                    BracketLabelLive(text = formatDueDate(dueMillis))
+                } else {
+                    BracketLabel(text = formatDueDate(dueMillis))
+                }
             }
         }
+        HairlineRule()
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun RecordCard(
     record: RecordEntity,
-    onClick: () -> Unit
+    selected: Boolean,
+    selectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val thumbnailBitmap: ImageBitmap? = remember(record.photoPath) {
         try {
@@ -296,18 +394,17 @@ private fun RecordCard(
         parseTags(record.tagsJson)
     }
 
-    Card(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = ColorCardBg),
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
+            .background(if (selected) S.RedTint.copy(alpha = 0.10f) else Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(vertical = S.gutter),
+            horizontalArrangement = Arrangement.spacedBy(S.gutter),
             verticalAlignment = Alignment.Top
         ) {
             if (thumbnailBitmap != null) {
@@ -317,79 +414,95 @@ private fun RecordCard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(56.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(S.r6)
                 )
+            } else if (record.photoPath.isBlank()) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(S.RedTint.copy(alpha = 0.10f), S.r6),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Voice note",
+                        tint = S.Red
+                    )
+                }
             } else {
                 Box(
                     modifier = Modifier
                         .size(56.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF2B2B2B))
+                        .background(S.PaperSunk, S.r6)
+                        .border(BorderStroke(S.hairlineWidth, S.Hairline), S.r6)
                 )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
-
             Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = record.title.ifBlank { "Untitled Record" },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorCream,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
+                BracketLabel(formatRelativeTime(record.createdAt))
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.height(S.sm))
 
-                    Text(
-                        text = formatRelativeTime(record.createdAt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ColorCream.copy(alpha = 0.55f)
-                    )
-                }
+                Text(
+                    text = record.title.ifBlank { "untitled" },
+                    style = SmritiType.DisplaySmall,
+                    color = S.Ink,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
 
-                if (record.summary.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = record.summary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ColorCream.copy(alpha = 0.75f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                when (record.enrichmentState) {
+                    "PENDING", "RUNNING" -> {
+                        Spacer(modifier = Modifier.height(S.xs))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(S.sm)
+                        ) {
+                            ThinkingDots()
+                            BracketLabel(if (record.enrichmentState == "RUNNING") "understanding" else "queued")
+                        }
+                        Spacer(modifier = Modifier.height(S.sm))
+                        ShimmerLine(widthFraction = 0.85f)
+                        Spacer(modifier = Modifier.height(S.xs))
+                        ShimmerLine(widthFraction = 0.55f)
+                    }
+                    "FAILED" -> {
+                        Spacer(modifier = Modifier.height(S.xs))
+                        BracketLabel("could not extract")
+                    }
+                    else -> {
+                        if (record.summary.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(S.xs))
+                            Text(
+                                text = record.summary,
+                                style = SmritiType.BodySmall,
+                                color = S.Muted,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
 
                 if (tags.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(S.sm))
                     FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(S.sm),
+                        verticalArrangement = Arrangement.spacedBy(S.sm)
                     ) {
                         tags.forEach { tag ->
-                            Surface(
-                                shape = RoundedCornerShape(percent = 50),
-                                color = ColorAmber.copy(alpha = 0.15f),
-                                border = BorderStroke(1.dp, ColorAmber.copy(alpha = 0.4f))
-                            ) {
-                                Text(
-                                    text = tag,
-                                    color = ColorAmber,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
+                            SmritiChip(text = tag, kind = ChipKind.Tag)
                         }
                     }
                 }
             }
+
+            if (selectionMode) {
+                Spacer(modifier = Modifier.width(S.md))
+                if (selected) NodeSquare(size = 10.dp) else Box(Modifier.size(10.dp))
+            }
         }
+
+        HairlineRule()
     }
 }

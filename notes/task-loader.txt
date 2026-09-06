@@ -1,0 +1,56 @@
+Show that the model is still working on a record. Edit files directly. UI only.
+
+THE PROBLEM
+Extraction now runs in a background pass that takes 10-45 s. During that window a record sits in
+the timeline with its provisional title (the raw transcript), no summary and no tags -- visually
+identical to a record the model finished and found nothing in. Users conclude the app is broken.
+It is not: RecordEntity.enrichmentState already tells us, we simply never render it.
+
+  PENDING  queued, model has not started
+  RUNNING  the model is working on this record right now
+  DONE     finished
+  FAILED   gave up after 3 attempts
+
+CHANGES
+
+1. app/src/main/java/com/smriti/app/ui/TimelineScreen.kt
+   In the record card composable (the one taking `record: RecordEntity`, around line 281),
+   when record.enrichmentState is "PENDING" or "RUNNING", show an inline working indicator in
+   place of the summary line:
+     - a small CircularProgressIndicator, about 14.dp, strokeWidth 2.dp, tinted ColorAmber
+       (see ui/theme for the existing colour names -- reuse them, do not hardcode hex)
+     - beside it, in the same muted style the existing summary/time text uses:
+         RUNNING -> "Understanding…"
+         PENDING -> "Queued"
+     - when the state is DONE or FAILED, render exactly what is rendered today. Do not change
+       the DONE path at all.
+     - FAILED should show a quiet, non-alarming line: "Could not extract" in the existing muted
+       colour, with no spinner. A capture is never lost, so this must not look like an error.
+   Keep the card's existing layout, padding, thumbnail and title behaviour untouched. The
+   indicator replaces the summary text only while the model is working.
+
+2. app/src/main/java/com/smriti/app/ui/DetailScreen.kt
+   Same treatment where the summary is shown: a spinner plus "Understanding…" / "Queued" while
+   the state is RUNNING / PENDING. The photo and the "What you said" transcript section MUST
+   still render normally -- those are available immediately and are the whole point of the fast
+   capture. Only the model-derived part shows the indicator.
+
+3. Make it live-updating.
+   Check how the record list reaches the UI: TimelineViewModel observes RecordDao.observeRecords(),
+   which is a Room Flow, so enrichmentState changes should already propagate. VERIFY that the
+   query behind it selects the whole row (SELECT *) so the new column is included. If DetailScreen
+   fetches a record once with a suspend getRecord(id) rather than observing it, add an observing
+   query -- otherwise the detail view will never leave "Understanding…" until the user navigates
+   away and back. State which of the two you found.
+
+CONSTRAINTS
+- UI only. Do NOT change Enricher, Extractor, CapturePipeline, BubbleService, the Room schema,
+  or any DAO write path. Adding one observing @Query for a single record is allowed.
+- Do NOT add any new dependency. CircularProgressIndicator is already in Material3.
+- Reuse the existing theme colours and typography. No new hardcoded colours.
+- Kotlin 2.0.21, Jetpack Compose.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- Offline flavor must not gain a network permission.
+
+Print a summary of what changed, and say explicitly whether DetailScreen needed a new observing query.

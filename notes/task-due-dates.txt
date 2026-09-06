@@ -1,0 +1,77 @@
+Stop the extractor inventing due dates. Edit/create files directly.
+
+THE DEFECT (measured on an iQOO 15, Gemma 3n E4B, 2026-09-05 which was a Saturday)
+Transcript: "Rohit ships the API by Friday and we need two hundred more units from Sharma Traders"
+Both tasks were written with dueDateMillis = 2026-09-09, a WEDNESDAY. Two separate faults:
+  a) "by Friday" should be 2026-09-11. The model did the date arithmetic and got it wrong.
+  b) "order 200 units from Sharma Traders" states NO deadline at all, yet received one.
+
+PROGRESS.md states the project rule explicitly: "Unparseable dates become no date, never a
+wrong date." The app currently does the opposite, and a user acting on these deadlines would be
+misled.
+
+ROOT INSIGHT
+A 4B model is bad at date arithmetic and will confabulate a plausible-looking date to fill a
+schema field. java.time is perfect at date arithmetic. So do NOT trust the model's date -
+derive it deterministically from the words the user actually said, and otherwise emit null.
+
+CREATE app/src/main/java/com/smriti/app/ai/DueDateResolver.kt
+    object DueDateResolver {
+        fun resolve(actionText: String, transcript: String, modelDue: String?, today: LocalDate): String?
+    }
+Returns an ISO-8601 date string or null. Rules, applied in order:
+
+  1. Build the haystack as actionText + " " + transcript, lowercased.
+  2. If the haystack contains NO temporal expression at all -> return null, ALWAYS, no matter
+     what modelDue says. This is the fix for fault (b).
+     Temporal expressions to detect:
+       - weekday names: monday..sunday (also "mon","tue","tues","wed","thu","thur","thurs","fri","sat","sun"
+         only when they appear as whole words)
+       - today, tonight, tomorrow, day after tomorrow
+       - "next week", "this week", "next month", "end of the week", "end of month"
+       - month names january..december (and jan/feb/mar/apr/jun/jul/aug/sep/sept/oct/nov/dec as whole words)
+       - a 4-digit year, or an ISO-looking yyyy-mm-dd
+  3. If a WEEKDAY name is present -> compute the date ourselves and IGNORE modelDue entirely.
+     This is the fix for fault (a). Use the NEXT occurrence strictly after `today`
+     (so on Saturday 2026-09-05, "friday" -> 2026-09-11, never today and never in the past).
+     If several weekdays appear, use the first one in the haystack.
+  4. "today" -> today. "tonight" -> today. "tomorrow" -> today.plusDays(1).
+     "day after tomorrow" -> today.plusDays(2). These also override modelDue.
+  5. Otherwise a temporal expression exists but is not one we resolve ourselves (a month name,
+     an explicit date). Accept modelDue ONLY if it parses as a strict ISO-8601 LocalDate.
+     Anything unparseable -> null.
+  6. Never return a date more than 2 years from `today` in either direction - a 4B model
+     occasionally emits years like 2014 or 2077. Out of range -> null.
+
+WIRE IT IN
+- app/src/main/java/com/smriti/app/ai/Extractor.kt: where each Action is built in parseJson,
+  the `due` must pass through DueDateResolver.resolve(text, <the transcript>, rawDue, LocalDate.now()).
+  parseJson does not currently receive the transcript - thread it in (it is already available in
+  extract() and retryShortened()). Keep the existing pick("due","dueDate","due_date",...) alias
+  logic to obtain the raw value; the resolver decides what survives.
+- app/src/main/java/com/smriti/app/ai/Extractor.kt buildPrompt(): add ONE explicit line to the
+  prompt: due must be null unless the person actually stated a day or date; never guess one.
+  Change nothing else about the prompt - the actions-first ordering and the worked example were
+  measured and must stay. In the worked example, keep the populated due (it says "tomorrow", so
+  a date is correct there).
+
+TESTS - add to app/src/test/java/com/smriti/app/ai/ExtractorJsonTest.kt (do not modify existing tests)
+  Pin today = LocalDate.of(2026, 9, 5) (a Saturday) and assert:
+   - resolve("Ships API", "Rohit ships the API by Friday", "2026-09-09", today) == "2026-09-11"
+   - resolve("Order 200 units from Sharma Traders", "we need two hundred more units", "2026-09-09", today) == null
+   - resolve("call back", "call him tomorrow", null, today) == "2026-09-06"
+   - resolve("pay rent", "pay the rent", "2026-09-11", today) == null      // no temporal words
+   - resolve("ship it", "ship it by 2077-01-01", "2077-01-01", today) == null  // out of range
+   - a weekday that is today: resolve("x","do it saturday","2026-09-05",today) == "2026-09-12"
+
+CONSTRAINTS
+- Do NOT change repairJson, the unescape fallback, the key aliases, or the retry flow.
+- Do NOT change Enricher, CapturePipeline, the DAO, or the Room schema.
+- Hindi/Devanagari weekday names are OUT OF SCOPE for this task - English only. Add a TODO
+  comment noting that Whisper emits Devanagari for Hindi speech and those tokens are not yet
+  matched.
+- Kotlin 2.0.21, java.time. minSdk 26 so java.time is available without desugaring.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+
+Print a summary of files changed and why.

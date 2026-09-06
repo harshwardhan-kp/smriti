@@ -1,0 +1,88 @@
+Make LiteRT-LM the primary on-device LLM engine, with MediaPipe as fallback. Edit files directly.
+
+WHY (all measured on an iQOO 15, SM8850, Gemma 3n E4B, today)
+  MediaPipe tasks-genai : generate 45-50 s, and it emits <end_of_turn> as literal text then
+                          regenerates the whole answer ~10 times, burning most of that time.
+  LiteRT-LM             : generate 16.4 s for the identical model on the identical CPU backend,
+                          output clean, no <end_of_turn> spam - because it applies Gemma's chat
+                          template. A 3x win.
+MediaPipe's LLM Inference API is also officially maintenance-only.
+
+ALREADY DONE - DO NOT REDO
+- app/build.gradle.kts already has litertlm-android:0.17.0 and -Xskip-metadata-version-check.
+- ModelProvisioner already returns *.litertlm files, preferring gemma-3n.
+- app/src/offline/java/com/smriti/app/ai/NpuProbe.kt already proves the API works on device.
+  READ IT FIRST - it is the reference for correct Engine/Backend usage.
+
+1. EXTEND THE SEAM: app/src/main/java/com/smriti/app/ai/LlmBackend.kt
+   Change the interface method to:
+       suspend fun generate(prompt: String, maxTokens: Int = 512, jsonSchema: String? = null): String
+   jsonSchema == null means unconstrained (the existing behaviour). This MUST be per-call:
+   Extractor wants constrained JSON, but Recall's answer synthesis is prose and must stay
+   unconstrained. Update every existing implementation to accept and ignore the new parameter
+   except where stated below (LocalLlmBackend, MuseBackend).
+
+2. CREATE app/src/offline/java/com/smriti/app/ai/LiteRtLmBackend.kt
+       class LiteRtLmBackend(private val engine: Engine, override val label: String) : LlmBackend
+   Use the Conversation API, NOT the Session API. This matters: ResponseFormat is only accepted
+   by Conversation.sendMessage(), and ConversationConfig must be built with
+   enableResponseFormat = true for it to take effect.
+       val conv = engine.createConversation(ConversationConfig(enableResponseFormat = true))
+       val reply = conv.sendMessage(
+           Message(role = Role.USER, contents = Contents.of(Content.Text(prompt))),
+           responseFormat = jsonSchema?.let { ResponseFormat.json(it) }
+       )
+   Use NAMED arguments throughout - ConversationConfig has 12 parameters and Message has 4;
+   positional args will silently bind wrong. Extract the reply's text from its Contents.
+   Create a fresh Conversation per generate() call and close it afterwards - these are one-shot
+   extractions, not a chat, and carrying context between unrelated captures would corrupt them.
+   close() must close the engine.
+
+3. CREATE app/src/offline/java/com/smriti/app/ai/LiteRtLmHolder.kt
+   Caches ONE initialised Engine behind a Mutex, exactly as the existing LlmHolder does.
+   Backend selection order, each in its own try/catch, logging which is attempted BEFORE the
+   attempt (tag "SmritiEngine"):
+       1. Backend.NPU(nativeLibraryDir = context.applicationInfo.nativeLibraryDir)
+       2. Backend.GPU()
+       3. Backend.CPU()
+   Expected TODAY: NPU fails with "Model requires one of [cpu,gpu] but Main backend is NPU"
+   (the generic .litertlm is not an NPU build) and GPU fails with "Failed to modify graph with
+   delegate". CPU succeeds. The chain is wired now so it starts working the day a per-SoC NPU
+   artifact exists - do not remove the NPU/GPU rungs just because they fail today.
+   engine.initialize() can take ~13 s; it must run off the main thread.
+   Label the backend that won, e.g. "NPU · gemma-3n-E4B" / "CPU · gemma-3n-E4B", reusing
+   ModelProvisioner's label for the model part.
+
+4. app/src/offline/java/com/smriti/app/ai/BackendFactory.kt
+   Try LiteRT-LM FIRST. If it throws or returns null, fall back to the existing MediaPipe path
+   (LlmHolder + LocalLlmBackend) unchanged, and log that it fell back. Keep the existing
+   `backend`/`resetPolicy` parameters working for the MediaPipe path.
+   Do NOT delete the MediaPipe code - it is the fallback.
+
+5. USE THE SCHEMA: app/src/main/java/com/smriti/app/ai/Extractor.kt
+   Add a private const holding the JSON schema and pass it as jsonSchema on BOTH generate calls
+   (attempt 1 and the shortened retry):
+     an object with required keys actions, title, summary, people, amounts, tags;
+     actions is an array of objects with required "text" (string) and "due" (string or null);
+     people and tags are arrays of strings;
+     amounts is an array of objects with value (number), currency (string), label (string).
+   Key names MUST match what parseJson already reads. Do NOT change parseJson, repairJson, the
+   unescape fallback, the aliases, the retry flow, or DueDateResolver - the repair path stays as
+   a safety net for the MediaPipe fallback, which has no constrained decoding.
+
+6. FIX A STRANDING BUG: app/src/main/java/com/smriti/app/ai/Enricher.kt
+   pendingEnrichment() selects only enrichmentState = 'PENDING'. A record whose process is
+   killed mid-pass stays 'RUNNING' forever and is never retried - and being killed during a
+   30-45 s model pass is entirely normal on Android. At the START of drain(), reset any
+   'RUNNING' rows back to 'PENDING' (add a DAO query for it). enrichmentAttempts already caps
+   runaway retries at 3.
+
+CONSTRAINTS
+- Do NOT change CapturePipeline, the Asr classes, Ocr, the Room schema, or any UI file.
+- Do NOT remove the MediaPipe dependency or NpuProbe.
+- Kotlin 2.0.21, coroutines.
+- Must build BOTH flavors and keep tests green:
+      ./gradlew assembleOfflineDebug assembleDevcloudDebug testOfflineDebugUnitTest
+- Offline flavor must not gain a network permission.
+
+Print a summary of files changed and why.
