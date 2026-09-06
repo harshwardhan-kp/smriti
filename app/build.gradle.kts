@@ -50,6 +50,32 @@ android {
         ndk {
             abiFilters += "arm64-v8a"
         }
+
+        externalNativeBuild {
+            cmake {
+                // libGenie.so is dlopened, not linked, so this builds for every flavour even
+                // though only `offline` ships the QNN libraries it looks for at runtime.
+                cppFlags += "-std=c++17"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // fastRPC loads the skel off the filesystem, so the .so files have to be extracted
+            // at install time rather than left compressed inside the APK. AGP defaults this off.
+            useLegacyPackaging = true
+            // libQnnHtpV81Skel.so is a Hexagon DSP6 ELF, not aarch64. The NDK strip tool cannot
+            // read it and fails the build if it tries, so it is excluded from stripping.
+            keepDebugSymbols += "**/libQnnHtpV81Skel.so"
+        }
     }
 
     flavorDimensions += "llm"
@@ -155,7 +181,17 @@ dependencies {
  */
 val forbiddenPermissions = listOf(
     "android.permission.INTERNET",
-    "android.permission.ACCESS_NETWORK_STATE"
+    "android.permission.ACCESS_NETWORK_STATE",
+    // Widened when the Smriti Desk bridge landed. The bridge is Bluetooth, and Bluetooth is not
+    // an IP socket, so the offline flavour has no use for Wi-Fi state either. Naming it here
+    // means the build now proves a stricter claim than it did before the feature, not a looser
+    // one. Verified absent from the merged manifest at the time this line was added.
+    "android.permission.ACCESS_WIFI_STATE",
+    "android.permission.CHANGE_WIFI_STATE",
+    // Scanning would drag a location prompt behind it. The phone only ever advertises.
+    "android.permission.BLUETOOTH_SCAN",
+    "android.permission.ACCESS_FINE_LOCATION",
+    "android.permission.ACCESS_COARSE_LOCATION"
 )
 
 tasks.register("assertNoNetworkPermission") {

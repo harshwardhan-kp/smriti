@@ -11,6 +11,27 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!--
+      Smriti Desk bridge. The phone is the BLE peripheral: it advertises and the Mac connects.
+
+      That direction is deliberate. A central has to scan, and BLUETOOTH_SCAN drags a
+      location-permission prompt behind it on every Android since 12. Advertising needs neither,
+      so nobody is asked for their location to use a capture bridge.
+
+      None of these is INTERNET. Bluetooth is not an IP socket, so the offline flavour still
+      cannot reach the network and assertNoNetworkPermission still passes. That is exactly
+      why the bridge is on Bluetooth and not on the LAN.
+    -->
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
+    <!--
       Smriti is offline by construction, not by convention.
 
       ML Kit pulls in com.google.android.datatransport:transport-backend-cct, a Google
@@ -31,6 +52,7 @@
         android:required="true" />
 
     <application
+        android:extractNativeLibs="true"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -55,6 +77,11 @@
         <service
             android:name=".capture.ScreenCaptureService"
             android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
+
+        <service
+            android:name=".bridge.BleBridgeService"
+            android:foregroundServiceType="connectedDevice"
             android:exported="false" />
 
         <service

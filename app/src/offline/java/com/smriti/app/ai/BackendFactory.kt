@@ -14,6 +14,18 @@ object BackendFactory {
         resetPolicy: Boolean = false
     ): Result<LlmBackend> {
         if (backend == null && !resetPolicy) {
+            // Genie first: it is the only path that actually reaches the Hexagon NPU. It returns
+            // null rather than throwing whenever it does not apply — wrong SoC, no bundle, no JNI
+            // library — so a non-Qualcomm handset falls straight through without loading anything.
+            try {
+                val genieBackend = GenieHolder.get(context)
+                if (genieBackend != null) {
+                    return Result.success(genieBackend)
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "Genie failed (${t.message}); falling back to LiteRT-LM", t)
+            }
+
             try {
                 val litertBackend = LiteRtLmHolder.get(context).getOrNull()
                 if (litertBackend != null) {
