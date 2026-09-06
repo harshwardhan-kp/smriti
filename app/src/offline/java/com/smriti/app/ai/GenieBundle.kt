@@ -67,9 +67,18 @@ object GenieBundle {
      * Checked before anything is loaded so a MediaTek handset never dlopens a QNN backend.
      */
     fun isSupportedSoc(): Boolean {
-        val manufacturer = Build.SOC_MANUFACTURER.takeIf { Build.VERSION.SDK_INT >= 31 }.orEmpty()
-        val supported = manufacturer.contains("Qualcomm", ignoreCase = true)
-        if (!supported) Log.i(TAG, "SoC is '$manufacturer', not Qualcomm — Genie skipped")
+        // The iQOO 15 reports SOC_MANUFACTURER as "QTI" -- Qualcomm Technologies Inc -- not
+        // "Qualcomm", so matching the full name silently skips the very device this was built
+        // for. Both spellings are accepted, and Build.HARDWARE ("qcom") covers handsets older
+        // than API 31, where SOC_MANUFACTURER does not exist at all.
+        val soc = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MANUFACTURER else ""
+        val hardware = Build.HARDWARE.orEmpty()
+        val supported = listOf("qualcomm", "qti", "qcom").any {
+            soc.contains(it, ignoreCase = true) || hardware.contains(it, ignoreCase = true)
+        }
+        if (!supported) {
+            Log.i(TAG, "SoC is '$soc' / hardware '$hardware', not Qualcomm — Genie skipped")
+        }
         return supported
     }
 

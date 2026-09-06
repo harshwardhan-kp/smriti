@@ -21,6 +21,8 @@
 
 #include "include/Genie/GenieCommon.h"
 #include "include/Genie/GenieDialog.h"
+#include "include/Genie/GenieLog.h"
+#include <cstdarg>
 
 #define TAG "SmritiGenie"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
@@ -37,6 +39,9 @@ using DialogQueryFn    = Genie_Status_t (*)(GenieDialog_Handle_t, const char*,
                                             GenieDialog_QueryCallback_t, const void*);
 using DialogResetFn    = Genie_Status_t (*)(GenieDialog_Handle_t);
 using DialogFreeFn     = Genie_Status_t (*)(GenieDialog_Handle_t);
+using LogCreateFn      = Genie_Status_t (*)(const void*, GenieLog_Callback_t,
+                                            GenieLog_Level_t, GenieLog_Handle_t*);
+using ConfigBindLogFn  = Genie_Status_t (*)(GenieDialogConfig_Handle_t, GenieLog_Handle_t);
 
 struct Genie {
     void*             handle = nullptr;
@@ -46,6 +51,8 @@ struct Genie {
     DialogQueryFn     dialogQuery = nullptr;
     DialogResetFn     dialogReset = nullptr;
     DialogFreeFn      dialogFree = nullptr;
+    LogCreateFn       logCreate = nullptr;
+    ConfigBindLogFn   configBindLog = nullptr;
 };
 
 Genie       g_genie;
@@ -95,9 +102,28 @@ bool ensureLoaded(const char* adspPath) {
         return false;
     }
 
+    // Optional: without these, a failed create is just a status code. Genie writes nothing to
+    // logcat of its own accord, so bind them if present and let it talk.
+    g_genie.logCreate     = reinterpret_cast<LogCreateFn>(dlsym(lib, "GenieLog_create"));
+    g_genie.configBindLog = reinterpret_cast<ConfigBindLogFn>(
+                                dlsym(lib, "GenieDialogConfig_bindLogger"));
+
     g_genie.handle = lib;
     LOGI("libGenie.so loaded");
     return true;
+}
+
+// Genie's own diagnostics, relayed to logcat. The backend may call this from several threads.
+void onGenieLog(const GenieLog_Handle_t, const char* fmt, GenieLog_Level_t level, uint64_t,
+                va_list args) {
+    if (fmt == nullptr) return;
+    char line[2048];
+    vsnprintf(line, sizeof(line), fmt, args);
+    const int priority = (level == GENIE_LOG_LEVEL_ERROR)   ? ANDROID_LOG_ERROR
+                       : (level == GENIE_LOG_LEVEL_WARN)    ? ANDROID_LOG_WARN
+                       : (level == GENIE_LOG_LEVEL_VERBOSE) ? ANDROID_LOG_DEBUG
+                                                            : ANDROID_LOG_INFO;
+    __android_log_print(priority, TAG, "genie: %s", line);
 }
 
 // Genie streams the answer in fragments; userData accumulates them.
@@ -134,6 +160,17 @@ Java_com_smriti_app_ai_GenieBridge_nativeCreate(JNIEnv* env, jobject,
     if (status != GENIE_STATUS_SUCCESS || config == nullptr) {
         setError("GenieDialogConfig_createFromJson failed with status " + std::to_string(status));
         return 0;
+    }
+
+    // Attach a logger before creating the dialog, so a failure explains itself.
+    if (g_genie.logCreate != nullptr && g_genie.configBindLog != nullptr) {
+        GenieLog_Handle_t logger = nullptr;
+        if (g_genie.logCreate(nullptr, onGenieLog, GENIE_LOG_LEVEL_INFO, &logger)
+                == GENIE_STATUS_SUCCESS && logger != nullptr) {
+            g_genie.configBindLog(config, logger);
+        } else {
+            LOGW("could not create a Genie logger; failures will be status codes only");
+        }
     }
 
     GenieDialog_Handle_t dialog = nullptr;

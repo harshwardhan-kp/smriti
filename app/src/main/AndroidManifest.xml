@@ -92,6 +92,16 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Persistent capture overlay the user explicitly enabled" />
         </service>
+        <!-- libQnnHtpV81Stub.so links against the vendor fastRPC client, which is how anything
+             reaches the Hexagon DSP at all. Vendor libraries are outside an app's linker
+             namespace unless the app names them, so without this the stub fails to dlopen and
+             Genie falls back with "Failed to load skel, error: 4000". The iQOO 15 lists all
+             three on its public-library allowlist (/vendor/etc/public.libraries*.txt).
+             required="false" so a handset without them still installs. -->
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
+        <uses-native-library android:name="libadsprpc.so" android:required="false" />
+        <uses-native-library android:name="libsdsprpc.so" android:required="false" />
+
     </application>
 
 </manifest>
